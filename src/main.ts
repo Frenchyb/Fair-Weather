@@ -36,7 +36,9 @@ function toggleJournal() {
   journal.classList.toggle('closed')
 }
 journalHead.addEventListener('click', toggleJournal)
-if (window.innerWidth < 700) journal.classList.add('closed')
+// It starts folded away; a new entry ticked off opens it for a moment.
+journal.classList.add('closed')
+let journalTimer = 0
 
 const REFUSED: Record<StrikeRefusal, string> = {
   'too-little-water': 'Lightning needs a fuller cloud. Rest it over the pond first.',
@@ -65,6 +67,11 @@ const garden = new Garden({
     const li = items.get(id)
     li?.classList.add('done')
     if (li) say(`Journal: ${li.textContent}`)
+    if (journal.classList.contains('closed')) {
+      journal.classList.remove('closed')
+      clearTimeout(journalTimer)
+      journalTimer = window.setTimeout(() => journal.classList.add('closed'), 6000)
+    }
     sound.bloom()
   },
   onStrike: () => sound.thunder(),
@@ -143,7 +150,7 @@ function frame(now: number) {
 
   // The instructions step aside once the player has rained for a while.
   if (garden.cloud.raining) hintShown += dt
-  if (hintShown > 6) hint.style.opacity = '0'
+  if (hintShown > 6 || garden.time > 40) hint.style.opacity = '0'
 
   const plant = view.plantNear(garden, target)
   let text = ''

@@ -119,9 +119,11 @@ export class Effects {
     const fadeOut = Math.min(1, (T.rainbow.lasts - r.age) / 4)
     const o = 0.42 * Math.min(fadeIn, fadeOut) * garden.daylight
     for (const m of this.rainbowMats) m.opacity = o
-    // Stand it up beyond the shower, square on to the viewer.
-    this.rainbow.position.set(r.x, -1.5, r.z - 8)
-    this.rainbow.rotation.y = Math.atan2(camera.position.x - r.x, camera.position.z - r.z) * 0.3
+    // Stand it up far off in the sky beyond the shower, square on to the viewer.
+    const away = new THREE.Vector3(r.x - camera.position.x, 0, r.z - camera.position.z).normalize()
+    this.rainbow.position.set(r.x + away.x * 60, -6, r.z + away.z * 60)
+    this.rainbow.rotation.y = Math.atan2(away.x, away.z)
+    this.rainbow.scale.setScalar(3.2)
   }
 
   private updateBolt(garden: Garden, dt: number) {

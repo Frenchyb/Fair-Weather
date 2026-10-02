@@ -169,7 +169,7 @@ export class CloudView {
     const grey = Math.max(c.raining ? 0.35 : 0, this.storm)
     cloudUniforms.uGrey.value += (grey - cloudUniforms.uGrey.value) * k
     const day = garden.daylight
-    this.mat.emissive.setHex(0x7d8a99).multiplyScalar(0.3 + 0.7 * day)
+    this.mat.emissive.setHex(0x7d8a99).multiplyScalar(0.06 + 0.94 * day)
     this.mat.opacity += ((c.fogging ? 0.45 : 0.97) - this.mat.opacity) * k
 
     this.updateRain(garden, dt)

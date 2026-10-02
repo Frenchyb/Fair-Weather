@@ -127,7 +127,7 @@ export function shaded<M extends THREE.Material>(material: M, fx: GroundFx = 'pl
           `#include <color_fragment>
           vec4 fld = fwField(vShadeXZ);
           float n = fwNoise(vShadeXZ * 0.9) * 0.6 + fwNoise(vShadeXZ * 3.1) * 0.4;
-          vec3 parched = mix(vec3(0.20, 0.155, 0.075), vec3(0.28, 0.22, 0.11), n);
+          vec3 parched = mix(vec3(0.10, 0.085, 0.035), vec3(0.15, 0.125, 0.055), n);
           vec3 lush = mix(vec3(0.05, 0.12, 0.025), vec3(0.085, 0.17, 0.04), n);
           float g = smoothstep(0.0, 1.0, fld.r + (n - 0.5) * 0.25);
           diffuseColor.rgb = mix(parched, lush, g);
@@ -138,7 +138,7 @@ export function shaded<M extends THREE.Material>(material: M, fx: GroundFx = 'pl
           diffuseColor.rgb *= mix(1.0, 0.55, wetness);
           float hollow = fwNoise(vShadeXZ * 0.7 + 17.0);
           float puddle = smoothstep(${PUDDLE_LINE} - 0.02, ${PUDDLE_LINE} + 0.06, fld.g + (hollow - 0.55) * 0.25);
-          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.06, 0.07), puddle * 0.85);`,
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.03, 0.04, 0.05), puddle * 0.7);`,
         )
         .replace(
           '#include <roughnessmap_fragment>',
@@ -168,7 +168,7 @@ export function shaded<M extends THREE.Material>(material: M, fx: GroundFx = 'pl
         .replace(
           '#include <color_fragment>',
           `#include <color_fragment>
-          vec3 parched = vec3(0.34, 0.27, 0.12);
+          vec3 parched = vec3(0.24, 0.20, 0.08);
           vec3 lush = vec3(0.10, 0.25, 0.04);
           vec3 blade = mix(parched, lush, smoothstep(0.0, 1.0, vGreen));
           blade *= mix(0.55, 1.15, vTip);
