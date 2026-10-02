@@ -78,7 +78,7 @@ const garden = new Garden({
   onStormRefused: () => say('The storm is still gathering. Green more of the lawn, or bring something into bloom.'),
   onStormEnd: () => say('The storm has passed, and the cloud is full again.'),
 })
-const view = new GardenScene(canvas, garden)
+const view = new GardenScene(canvas, garden, new URLSearchParams(location.search).has('lite'))
 const input = new Input(canvas)
 input.onFirstPress = () => sound.start()
 input.onToggleJournal = toggleJournal
@@ -98,7 +98,8 @@ const FEELING = {
 }
 
 function frame(now: number) {
-  const dt = Math.min(0.1, (now - last) / 1000)
+  const wall = (now - last) / 1000
+  const dt = Math.min(0.1, wall)
   last = now
 
   const pan = input.panDirection(canvas.getBoundingClientRect())
@@ -126,10 +127,11 @@ function frame(now: number) {
   if (input.fog && !garden.cloud.fogging) input.fog = false
   sound.setRaining(garden.cloud.raining || garden.storming)
   sound.setBreeze(garden.cloud.breezing)
-  view.render(garden, dt)
+  view.render(garden, dt, wall)
 
   const st = garden.storm
-  stormBadge.className = garden.storming ? 'on' : st.charge >= 1 ? 'ready' : ''
+  stormBadge.classList.toggle('on', garden.storming)
+  stormBadge.classList.toggle('ready', !garden.storming && st.charge >= 1)
   stormBadge.style.setProperty('--charge', String(garden.storming ? 1 : st.charge))
   stormBadge.textContent = garden.storming ? 'Storm' : st.charge >= 1 ? 'Storm ready: G' : 'Storm gathering'
 

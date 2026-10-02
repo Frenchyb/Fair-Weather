@@ -9,6 +9,7 @@ import * as THREE from 'three'
 import type { Garden } from '../sim/garden'
 import { T } from '../tuning'
 import { fieldUniforms, shaded } from './shade'
+import { surfaces } from './textures'
 import { rng } from './world'
 
 /** A soft round blob, for fog and scorch marks. */
@@ -77,7 +78,7 @@ export class GroundView {
   private bankClock = 0
   private m = new THREE.Matrix4()
 
-  constructor(scene: THREE.Scene, garden: Garden) {
+  constructor(scene: THREE.Scene, garden: Garden, lite = false) {
     const g = garden.ground
     this.data = new Uint8Array(g.cols * g.rows * 4)
     this.tex = new THREE.DataTexture(this.data, g.cols, g.rows, THREE.RGBAFormat)
@@ -92,14 +93,18 @@ export class GroundView {
     const y = T.yard
     const lawnGeo = new THREE.PlaneGeometry(y.x1 - y.x0 + 60, y.z1 - y.z0 + 50, 1, 1)
     lawnGeo.rotateX(-Math.PI / 2)
-    const lawn = new THREE.Mesh(lawnGeo, shaded(new THREE.MeshStandardMaterial({ color: 0xffffff }), 'lawn'))
+    const lawnNormal = surfaces.grass.normal.clone()
+    lawnNormal.repeat.set((y.x1 - y.x0 + 60) / 2.6, (y.z1 - y.z0 + 50) / 2.6)
+    const lawnMat = new THREE.MeshStandardMaterial({ color: 0xffffff, normalMap: lawnNormal })
+    lawnMat.normalScale.setScalar(0.8)
+    const lawn = new THREE.Mesh(lawnGeo, shaded(lawnMat, 'lawn'))
     lawn.position.set((y.x0 + y.x1) / 2, 0, (y.z0 + y.z1) / 2 + 8)
     lawn.receiveShadow = true
     scene.add(lawn)
 
     // Grass: a few tens of thousands of clumps, kept off beds, paving and water.
     const r = rng(41)
-    const count = T.render.grassClumps
+    const count = lite ? T.render.grassClumps / 4 : T.render.grassClumps
     const grass = new THREE.InstancedMesh(
       clump(),
       shaded(new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide, roughness: 0.8 }), 'grass'),

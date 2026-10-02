@@ -18,15 +18,17 @@ import { Effects } from './effects'
 import { GroundView } from './ground'
 import { Horizon } from './horizon'
 import { needIcons } from './icons'
+import { loadSkyLight, surfaces } from './textures'
 import { PlantView } from './plants'
 import { fieldUniforms, shadeUniforms } from './shade'
 import { WindView } from './wind'
 import { World, lambert } from './world'
 
-const DRY = new THREE.Color(0xa4835e)
-const WET = new THREE.Color(0x4a3524)
-const SOAKED = new THREE.Color(0x3a3a40)
-const MULCH_DRY = new THREE.Color(0x8a6a48)
+// Tints over the photographed soil: pale when dry, dark when wet.
+const DRY = new THREE.Color(0xf4e6d2)
+const WET = new THREE.Color(0x6a5644)
+const SOAKED = new THREE.Color(0x4e4f58)
+const MULCH_DRY = new THREE.Color(0xc4a07a)
 
 const ZENITH_DAY = new THREE.Color(0x3d7cc9)
 const HORIZON_DAY = new THREE.Color(0xd3e4ee)
@@ -34,6 +36,14 @@ const ZENITH_NIGHT = new THREE.Color(0x070b18)
 const HORIZON_NIGHT = new THREE.Color(0x1a2440)
 const HORIZON_DUSK = new THREE.Color(0xf0a070)
 const STORM = new THREE.Color(0x4a525c)
+
+/** Raked soil, tinted by how wet it is. */
+function soilMaterial(colour: THREE.Color) {
+  const m = lambert(colour)
+  m.map = surfaces.dirt.map
+  m.normalMap = surfaces.dirt.normal
+  return m
+}
 
 export class GardenScene {
   readonly renderer: THREE.WebGLRenderer
@@ -69,9 +79,10 @@ export class GardenScene {
   private dist = 20
   private gust = 0
 
-  constructor(private canvas: HTMLCanvasElement, garden: Garden) {
+  /** `lite` starts at one pixel per CSS pixel with no ambient occlusion: for software-GL checks. */
+  constructor(private canvas: HTMLCanvasElement, garden: Garden, lite = false) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' })
-    this.pixelRatio = Math.min(window.devicePixelRatio, 2)
+    this.pixelRatio = lite ? 1 : Math.min(window.devicePixelRatio, 2)
     this.renderer.setPixelRatio(this.pixelRatio)
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.0
@@ -82,15 +93,16 @@ export class GardenScene {
     s.fog = new THREE.Fog(0xd3e4ee, 90, 700)
     s.add(this.hemi, this.sun, this.sun.target, this.moon, this.moon.target)
     this.sun.castShadow = true
-    this.sun.shadow.mapSize.set(4096, 4096)
+    this.sun.shadow.mapSize.setScalar(lite ? 1024 : 4096)
     this.sun.shadow.bias = -0.0004
     this.sun.shadow.normalBias = 0.04
     this.sun.shadow.radius = 3
     s.add(this.horizon.root, this.world.root)
     s.environment = this.skyLight()
+    loadSkyLight(this.renderer, (env) => (s.environment = env))
 
     this.buildBed()
-    this.ground = new GroundView(s, garden)
+    this.ground = new GroundView(s, garden, lite)
     this.cloud = new CloudView(s)
 
     for (const p of garden.plants) {
@@ -100,7 +112,7 @@ export class GardenScene {
       this.plants.push(view)
       if (!p.inBed) {
         // A ring of mulch round each plant outside the bed: its colour shows the soil's moisture.
-        const mat = lambert(MULCH_DRY)
+        const mat = soilMaterial(MULCH_DRY)
         const r = (T.kinds[p.kind].reach ?? 0.5) * 0.85
         const ring = new THREE.Mesh(new THREE.CircleGeometry(r, 24), mat)
         ring.rotation.x = -Math.PI / 2
@@ -142,6 +154,7 @@ export class GardenScene {
     this.composer = new EffectComposer(this.renderer)
     this.plain = new RenderPass(s, this.camera)
     try {
+      if (lite) throw new Error('lite')
       this.ao = new N8AOPass(s, this.camera, 1, 1)
       Object.assign(this.ao.configuration, {
         aoRadius: 1.6,
@@ -206,7 +219,7 @@ export class GardenScene {
     const tile = new THREE.BoxGeometry(tw, height, td)
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        const mat = lambert(DRY.getHex())
+        const mat = soilMaterial(DRY)
         const t = new THREE.Mesh(tile, mat)
         t.position.set((c - (cols - 1) / 2) * tw, height / 2, (r - (rows - 1) / 2) * td)
         t.receiveShadow = true
@@ -301,7 +314,8 @@ export class GardenScene {
     this.camera.lookAt(look)
   }
 
-  render(garden: Garden, dt: number) {
+  /** `wall` is the real time the last frame took, unclamped, for `adapt`. */
+  render(garden: Garden, dt: number, wall = dt) {
     const t = garden.time
     const c = garden.cloud
     const day = garden.daylight
@@ -346,7 +360,7 @@ export class GardenScene {
     this.wind.update(garden, dt)
     this.effects.update(garden, this.camera, dt)
     this.updateBees(garden)
-    this.adapt(dt)
+    this.adapt(wall)
     this.composer.render(dt)
   }
 
@@ -355,7 +369,7 @@ export class GardenScene {
    * render fewer pixels, and as a last resort drop the ambient occlusion.
    */
   private adapt(dt: number) {
-    this.slow = dt > 1 / 38 ? this.slow + dt : Math.max(0, this.slow - dt * 0.5)
+    this.slow = dt > 1 / 38 ? this.slow + Math.min(dt, 1) : Math.max(0, this.slow - dt * 0.5)
     if (this.slow < 3) return
     this.slow = 0
     if (this.pixelRatio > 1) {

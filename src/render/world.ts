@@ -5,7 +5,10 @@
  */
 import * as THREE from 'three'
 import { T } from '../tuning'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import lanternGlb from '../assets/lantern.glb'
 import { shaded } from './shade'
+import { surfaces } from './textures'
 
 /** Deterministic scatter, so the garden looks the same every visit. */
 export function rng(seed: number) {
@@ -22,6 +25,35 @@ export function lambert(color: number | THREE.Color) {
 /** Paving and stones: darken in the rain and hold puddles. */
 function paving(color: number | THREE.Color) {
   return shaded(new THREE.MeshStandardMaterial({ color, roughness: 0.9 }), 'wet')
+}
+
+/**
+ * A clump of foliage: a lumpy ball, lighter on top where the sun gets in and
+ * darker underneath, so a crown made of a few of them reads as leaves, not as
+ * a sphere.
+ */
+export function foliage(seed: number) {
+  const g = new THREE.IcosahedronGeometry(1, 3)
+  const p = g.attributes.position as THREE.BufferAttribute
+  const v = new THREE.Vector3()
+  const colours: number[] = []
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i)
+    const n =
+      Math.sin(v.x * 7 + seed) * Math.sin(v.y * 6.1 + seed * 1.7) * Math.sin(v.z * 6.7 + seed * 2.3) * 0.12 +
+      Math.sin(v.x * 17 + seed * 3) * Math.sin(v.z * 15 + seed) * 0.04
+    v.multiplyScalar(1 + n)
+    p.setXYZ(i, v.x, v.y, v.z)
+    const light = 0.55 + 0.45 * (v.y * 0.5 + 0.5) + n * 1.5
+    colours.push(light, light, light * 0.95)
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3))
+  g.computeVertexNormals()
+  return g
+}
+
+function leaves(color: THREE.Color) {
+  return shaded(new THREE.MeshStandardMaterial({ color, vertexColors: true, roughness: 0.85 }))
 }
 
 function add(parent: THREE.Object3D, mesh: THREE.Mesh, cast = true, receive = true) {
@@ -53,6 +85,7 @@ function gable(width: number, depth: number, rise: number) {
 export class World {
   readonly root = new THREE.Group()
   private windows: THREE.MeshStandardMaterial
+  private lamps = new THREE.MeshStandardMaterial({ color: 0xfff1c8, emissive: 0xffc46a, emissiveIntensity: 0 })
   private oakLeaves: THREE.MeshStandardMaterial[] = []
   private r = rng(7)
 
@@ -65,6 +98,30 @@ export class World {
     this.oak()
     this.pond()
     this.ornaments()
+    this.lanterns()
+  }
+
+  /** Two garden lanterns by the patio (Kenney, CC0), lit after dark. */
+  private lanterns() {
+    const p = T.hardGround[1]
+    const spots: [number, number][] = [
+      [p.x1 + 0.35, p.z1 + 0.35],
+      [p.x0 - 0.35, p.z1 + 0.35],
+    ]
+    new GLTFLoader().load(lanternGlb, (gltf) => {
+      const model = gltf.scene
+      const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3())
+      const k = 1.9 / size.y
+      for (const [x, z] of spots) {
+        const lamp = model.clone()
+        lamp.scale.setScalar(k)
+        lamp.position.set(x, 0, z)
+        lamp.traverse((o) => (o.castShadow = true))
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 8), this.lamps)
+        bulb.position.set(x, 1.9 * 0.86, z)
+        this.root.add(lamp, bulb)
+      }
+    })
   }
 
   /**
@@ -83,6 +140,7 @@ export class World {
   /** 0 by day, 1 at night: lights on in the house. */
   setNight(night: number) {
     this.windows.emissiveIntensity = night * 1.4
+    this.lamps.emissiveIntensity = night * 4
   }
 
   private boundary() {
@@ -112,9 +170,9 @@ export class World {
     run(y.x1 + 0.5, back, y.x1 + 0.5, y.z1 + 2)
 
     // A hedge of round shrubs outside the fence, and trees beyond it.
-    const crown = new THREE.IcosahedronGeometry(1, 1)
+    const crown = foliage(3)
     const shrub = (x: number, z: number, s: number) => {
-      const mat = lambert(new THREE.Color().setHSL(0.25 + r() * 0.05, 0.4, 0.27 + r() * 0.08))
+      const mat = leaves(new THREE.Color().setHSL(0.25 + r() * 0.05, 0.4, 0.27 + r() * 0.08))
       const m = new THREE.Mesh(crown, mat)
       m.scale.set(s * 1.2, s, s)
       m.position.set(x, s * 0.6, z)
@@ -131,7 +189,7 @@ export class World {
     for (let x = y.x0 - 6; x <= y.x1 + 6; x += 4 + r() * 3) {
       const t = new THREE.Group()
       add(t, new THREE.Mesh(trunk, bark), true, false)
-      const c = new THREE.Mesh(crown, lambert(new THREE.Color().setHSL(0.27 + r() * 0.04, 0.35, 0.25 + r() * 0.06)))
+      const c = new THREE.Mesh(crown, leaves(new THREE.Color().setHSL(0.27 + r() * 0.04, 0.35, 0.25 + r() * 0.06)))
       c.position.y = 4
       c.scale.set(2.4, 2.2, 2.4)
       add(t, c, true, false)
@@ -181,13 +239,29 @@ export class World {
     // The patio: flagstones, a table, two chairs, and pots at the corners.
     const p = T.hardGround[1]
     const r2 = rng(11)
-    const flag = new THREE.BoxGeometry(0.9, 0.06, 0.9)
-    for (let x = p.x0 + 0.5; x < p.x1; x += 0.95) {
-      for (let z = p.z0 + 0.5; z < p.z1; z += 0.95) {
-        const s = new THREE.Mesh(flag, paving(new THREE.Color().setHSL(0.09, 0.12, 0.62 + r2() * 0.1)))
-        s.position.set(x, 0.03, z)
-        add(this.root, s, false)
-      }
+    // Stone paving, photographed, with a brick-coloured edge.
+    const pw = p.x1 - p.x0
+    const pd = p.z1 - p.z0
+    const tiles = (t: THREE.Texture) => {
+      const c = t.clone()
+      c.repeat.set(pw / 2.2, pd / 2.2)
+      return c
+    }
+    const stone = paving(0xffffff)
+    stone.map = tiles(surfaces.stone.map)
+    stone.normalMap = tiles(surfaces.stone.normal)
+    stone.roughnessMap = tiles(surfaces.stone.rough)
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(pw, 0.06, pd), stone)
+    // Box UVs run 0..1 on the top face, so the repeat above sets the tile size.
+    slab.position.set((p.x0 + p.x1) / 2, 0.03, (p.z0 + p.z1) / 2)
+    add(this.root, slab, false)
+    const edge = lambert(0x9a6b52)
+    for (const [w, d, x, z] of [
+      [pw + 0.2, 0.1, (p.x0 + p.x1) / 2, p.z1 + 0.05],
+      [0.1, pd, p.x0 - 0.05, (p.z0 + p.z1) / 2],
+      [0.1, pd, p.x1 + 0.05, (p.z0 + p.z1) / 2],
+    ] as [number, number, number, number][]) {
+      add(this.root, box(w, 0.08, d, edge, x, 0.04, z), false)
     }
     const cx = (p.x0 + p.x1) / 2 + 1
     const cz = (p.z0 + p.z1) / 2
@@ -216,8 +290,8 @@ export class World {
     }
 
     // Foundation planting: boxwood balls and a strip of flowers along the house.
-    const ball = new THREE.IcosahedronGeometry(0.45, 1)
-    const boxwood = lambert(0x3f6b32)
+    const ball = foliage(5).scale(0.45, 0.45, 0.45)
+    const boxwood = leaves(new THREE.Color(0x3f6b32))
     for (const x of [hx0 + 0.6, hx0 + 1.6, hx1 - 0.6, hx1 - 1.6]) {
       const b = new THREE.Mesh(ball, boxwood)
       b.position.set(x, 0.4, p.z0 + 0.2)
@@ -311,13 +385,14 @@ export class World {
     const trunk = new THREE.CylinderGeometry(0.35, 0.55, o.crownHeight, 9)
     trunk.translate(0, o.crownHeight / 2, 0)
     add(g, new THREE.Mesh(trunk, lambert(0x5c4330)))
-    const crown = new THREE.IcosahedronGeometry(1, 1)
+    const crowns = [foliage(1), foliage(2.2), foliage(4.1)]
     for (let i = 0; i < 9; i++) {
+      const crown = crowns[i % 3]
       const a = (i / 9) * Math.PI * 2
       const d = i === 0 ? 0 : o.crownRadius * (0.45 + r() * 0.25)
-      const leaves = lambert(new THREE.Color().setHSL(0.26 + r() * 0.03, 0.42, 0.26 + r() * 0.06))
-      this.oakLeaves.push(leaves)
-      const c = new THREE.Mesh(crown, leaves)
+      const mat = leaves(new THREE.Color().setHSL(0.26 + r() * 0.03, 0.42, 0.26 + r() * 0.06))
+      this.oakLeaves.push(mat)
+      const c = new THREE.Mesh(crown, mat)
       c.position.set(Math.cos(a) * d, o.crownHeight + (r() - 0.3) * 0.9, Math.sin(a) * d)
       c.scale.setScalar(o.crownRadius * (0.5 + r() * 0.2))
       add(g, c, true, false)

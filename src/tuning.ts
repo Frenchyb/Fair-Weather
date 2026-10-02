@@ -330,7 +330,7 @@ export const T = {
     startX: -2,
     startZ: 1,
     /** Looking down at this angle (degrees above the horizon). */
-    pitch: 38,
+    pitch: 32,
     /** Zoom limits as a multiple of the starting distance, and per scroll pixel. */
     zoom: [0.45, 1.7] as [number, number],
     zoomPerPixel: 0.0012,

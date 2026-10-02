@@ -12,6 +12,7 @@
  */
 import * as THREE from 'three'
 import { T } from '../tuning'
+import { surfaces } from './textures'
 
 export const shadeUniforms = {
   uCloud: { value: new THREE.Vector2() },
@@ -30,6 +31,8 @@ export const fieldUniforms = {
   /** How hard the wind is blowing everywhere, 0 calm to 1 storm. */
   uGust: { value: 0 },
   uWind: { value: new THREE.Vector2(1, 0) },
+  /** Photographed grass, used for its light and dark, not its colour. */
+  uGrassTex: { value: surfaces.grass.map as THREE.Texture },
 }
 
 /**
@@ -45,6 +48,7 @@ uniform sampler2D uField;
 uniform vec2 uFieldMin, uFieldSize;
 uniform float uTime, uGust;
 uniform vec2 uWind;
+uniform sampler2D uGrassTex;
 float fwHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float fwNoise(vec2 p) {
   vec2 i = floor(p); vec2 f = fract(p);
@@ -123,10 +127,13 @@ export function shaded<M extends THREE.Material>(material: M, fx: GroundFx = 'pl
           `#include <color_fragment>
           vec4 fld = fwField(vShadeXZ);
           float n = fwNoise(vShadeXZ * 0.9) * 0.6 + fwNoise(vShadeXZ * 3.1) * 0.4;
-          vec3 parched = mix(vec3(0.42, 0.33, 0.17), vec3(0.55, 0.45, 0.25), n);
-          vec3 lush = mix(vec3(0.10, 0.22, 0.05), vec3(0.16, 0.30, 0.07), n);
+          vec3 parched = mix(vec3(0.20, 0.155, 0.075), vec3(0.28, 0.22, 0.11), n);
+          vec3 lush = mix(vec3(0.05, 0.12, 0.025), vec3(0.085, 0.17, 0.04), n);
           float g = smoothstep(0.0, 1.0, fld.r + (n - 0.5) * 0.25);
           diffuseColor.rgb = mix(parched, lush, g);
+          vec3 photo = texture2D(uGrassTex, vShadeXZ / 2.6).rgb;
+          // Normalised by the photo's own average, so it adds detail, not a cast.
+          diffuseColor.rgb *= clamp(dot(photo, vec3(0.3, 0.55, 0.15)) / 0.24, 0.45, 1.7);
           float wetness = smoothstep(0.0, 0.35, fld.g);
           diffuseColor.rgb *= mix(1.0, 0.55, wetness);
           float hollow = fwNoise(vShadeXZ * 0.7 + 17.0);
@@ -161,8 +168,8 @@ export function shaded<M extends THREE.Material>(material: M, fx: GroundFx = 'pl
         .replace(
           '#include <color_fragment>',
           `#include <color_fragment>
-          vec3 parched = vec3(0.55, 0.45, 0.24);
-          vec3 lush = vec3(0.17, 0.36, 0.08);
+          vec3 parched = vec3(0.34, 0.27, 0.12);
+          vec3 lush = vec3(0.10, 0.25, 0.04);
           vec3 blade = mix(parched, lush, smoothstep(0.0, 1.0, vGreen));
           blade *= mix(0.55, 1.15, vTip);
           // Laid-over grass catches the light along its length, like a mown stripe.
