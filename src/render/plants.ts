@@ -30,7 +30,7 @@ const ease = (t: number) => 1 - (1 - t) ** 2
 const ramp = (v: number, lo: number, hi: number) => Math.min(1, Math.max(0, (v - lo) / (hi - lo)))
 
 function lambert(color: number) {
-  return shaded(new THREE.MeshLambertMaterial({ color }))
+  return shaded(new THREE.MeshStandardMaterial({ color }))
 }
 
 function mesh(geo: THREE.BufferGeometry, mat: THREE.Material) {
@@ -43,13 +43,13 @@ export class PlantView {
   readonly root = new THREE.Group()
   /** Leans and droops with mood. */
   private body = new THREE.Group()
-  private leaf: THREE.MeshLambertMaterial
+  private leaf: THREE.MeshStandardMaterial
   private healthy: THREE.Color
   private flowers: THREE.Object3D[] = []
   private fruit: THREE.Mesh[] = []
-  private fruitMat?: THREE.MeshLambertMaterial
+  private fruitMat?: THREE.MeshStandardMaterial
   private seed: THREE.Mesh
-  private glow?: THREE.MeshLambertMaterial
+  private glow?: THREE.MeshStandardMaterial
   private phase = Math.random() * Math.PI * 2
 
   constructor(readonly kind: KindName) {
@@ -293,7 +293,7 @@ export class PlantView {
       this.body.add(leaf)
     }
     // White trumpets that open only after dark, and glow a little.
-    this.glow = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0xe8f0ff, emissiveIntensity: 0 })
+    this.glow = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xe8f0ff, emissiveIntensity: 0 })
     const trumpet = new THREE.ConeGeometry(1, 1, 10, 1, true)
     for (let i = 0; i < 6; i++) {
       const a = i * 1.05

@@ -52,8 +52,8 @@ export class WindView {
     stem.translate(0, 0.5, 0)
     const head = new THREE.IcosahedronGeometry(1, 0)
     head.scale(1, 0.55, 1)
-    this.stems = new THREE.InstancedMesh(stem, shaded(new THREE.MeshLambertMaterial({ color: 0x5d8f3c })), T.wild.max)
-    this.heads = new THREE.InstancedMesh(head, shaded(new THREE.MeshLambertMaterial({ color: 0xffffff })), T.wild.max)
+    this.stems = new THREE.InstancedMesh(stem, shaded(new THREE.MeshStandardMaterial({ color: 0x5d8f3c })), T.wild.max)
+    this.heads = new THREE.InstancedMesh(head, shaded(new THREE.MeshStandardMaterial({ color: 0xffffff })), T.wild.max)
     const c = new THREE.Color()
     for (let i = 0; i < T.wild.max; i++) {
       this.heads.setColorAt(i, c.setHex(HEAD[WILD_KINDS[i % WILD_KINDS.length]]))

@@ -7,6 +7,7 @@
  * the right (east) and z towards the viewer (south).
  */
 import { T, type KindName } from '../tuning'
+import { Ground } from './ground'
 import { WISHES, type WishId } from './journal'
 import { daylight, shadowOf } from './sky'
 
@@ -94,6 +95,22 @@ export interface Strike {
   age: number
 }
 
+/** Where lightning has struck: a scorch that heals into a fairy ring. Kept for good. */
+export interface Mark {
+  x: number
+  z: number
+  age: number
+}
+
+export interface Storm {
+  /** 0 to 1; at 1 the player can call it. */
+  charge: number
+  /** Seconds of storm left, 0 when there isn't one. */
+  left: number
+  /** Seconds until its next lightning strike. */
+  nextStrike: number
+}
+
 export interface Controls {
   /** Where the player is pointing on the ground, or null to stay put. */
   target: { x: number; z: number } | null
@@ -104,6 +121,8 @@ export interface Controls {
   strike?: boolean
   /** Desired spread, 0 to 1. Omit to leave it as it is. */
   spread?: number
+  /** True for the one step in which the storm is called. */
+  storm?: boolean
 }
 
 export type StrikeRefusal = 'too-little-water' | 'too-spread' | 'too-soon'
@@ -117,6 +136,10 @@ export interface Hooks {
   onStrikeRefused?: (why: StrikeRefusal) => void
   onRainbow?: (rainbow: Rainbow) => void
   onDawn?: () => void
+  onStormReady?: () => void
+  onStorm?: () => void
+  onStormRefused?: () => void
+  onStormEnd?: () => void
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
@@ -170,6 +193,9 @@ export class Garden {
   readonly seeds: Seed[] = []
   readonly wildflowers: Wildflower[] = []
   readonly journal = new Set<WishId>()
+  readonly marks: Mark[] = []
+  readonly ground: Ground
+  readonly storm: Storm = { charge: T.storm.start, left: 0, nextStrike: 0 }
   rainbow: Rainbow | null = null
   strike: Strike | null = null
   time = 0
@@ -210,6 +236,11 @@ export class Garden {
       windZ: 0,
     }
     for (const p of this.plants) this.assess(p, 1)
+    this.ground = new Ground(() => this.random())
+  }
+
+  get storming() {
+    return this.storm.left > 0
   }
 
   get daylight() {
@@ -303,6 +334,9 @@ export class Garden {
 
     this.moveCloud(dt, controls)
     if (controls.strike) this.tryStrike()
+    if (controls.storm) this.callStorm()
+    if (this.storming) this.rage(dt)
+    this.weatherGround(dt)
     for (const p of this.plants) this.tend(p, dt, day)
     this.drift(dt)
     this.age(dt)
@@ -317,6 +351,9 @@ export class Garden {
     }
     if (day < 0.2 && this.wildflowers.length >= 10) this.wish('fireflies')
     if (this.wildflowers.length >= 60) this.wish('meadow')
+    if (this.ground.deepestPuddle > 0.15) this.wish('puddle')
+    if (this.marks.some((m) => m.age > T.lightning.ringAfter)) this.wish('fairy-ring')
+    if (this.ground.greenShare >= 0.5) this.wish('green-half')
     if (!this.fullBloom && this.plants.every((p) => p.growth >= 1)) {
       this.fullBloom = true
       this.wish('all')
@@ -414,25 +451,108 @@ export class Garden {
     }
     this.sinceStrike = 0
     c.water -= L.cost
-    this.strike = { x: c.x, z: c.z, age: 0 }
-    // Lightning really does feed the soil: it fixes nitrogen out of the air.
+    this.strikeAt(c.x, c.z, this.radius + 0.6)
+  }
+
+  /**
+   * Lightning really does feed the soil: it fixes nitrogen out of the air. It
+   * leaves a scorch that heals greener than before, with wildflowers and then
+   * mushrooms coming up in a ring round it.
+   */
+  private strikeAt(x: number, z: number, feeds: number) {
+    const L = T.lightning
+    this.strike = { x, z, age: 0 }
     for (const p of this.plants) {
-      if (Math.hypot(p.x - c.x, p.z - c.z) < this.radius + 0.6) p.rich = 1
+      if (Math.hypot(p.x - x, p.z - z) < feeds) p.rich = 1
     }
     for (let i = 0; i < L.seeds; i++) {
-      const a = this.random() * Math.PI * 2
-      const v = 1 + this.random() * 2
+      const a = (i / L.seeds) * Math.PI * 2 + this.random() * 0.5
+      const flight = 0.6 + this.random() * 0.6
+      const v = (L.ring * (0.85 + this.random() * 0.3)) / flight
       this.seeds.push({
-        x: c.x,
-        z: c.z,
+        x,
+        z,
         vx: Math.cos(a) * v,
         vz: Math.sin(a) * v,
-        flight: 0.6 + this.random() * 0.8,
+        flight,
         kind: WILD_KINDS[Math.floor(this.random() * WILD_KINDS.length)],
       })
     }
+    this.marks.push({ x, z, age: 0 })
+    if (this.marks.length > L.marks) this.marks.shift()
+    this.ground.greenDisc(x, z, L.greenRadius, L.green)
     this.wish('lightning')
     this.hooks.onStrike?.(this.strike)
+  }
+
+  private callStorm() {
+    const s = this.storm
+    if (this.storming || s.charge < 1) {
+      this.hooks.onStormRefused?.()
+      return
+    }
+    s.charge = 0
+    s.left = T.storm.lasts
+    s.nextStrike = T.storm.lasts / T.storm.strikes / 2
+    this.wish('storm')
+    this.hooks.onStorm?.()
+  }
+
+  /** A storm rains wide round the cloud, strikes now and then, and gusts. */
+  private rage(dt: number) {
+    const s = this.storm
+    const S = T.storm
+    const c = this.cloud
+    s.left = Math.max(0, s.left - dt)
+    for (const p of this.plants) {
+      const d = Math.hypot(p.x - c.x, p.z - c.z)
+      if (d > S.radius) continue
+      const top = T.kinds[p.kind].moisture[1]
+      if (p.moisture < top) p.moisture = Math.min(top, p.moisture + S.soak * dt)
+    }
+    s.nextStrike -= dt
+    if (s.nextStrike <= 0) {
+      s.nextStrike = S.lasts / S.strikes
+      const a = this.random() * Math.PI * 2
+      const d = (0.3 + 0.6 * this.random()) * S.radius
+      const x = clamp(c.x + Math.cos(a) * d, T.yard.x0 + 1, T.yard.x1 - 1)
+      const z = clamp(c.z + Math.sin(a) * d, T.yard.z0 + 1, T.yard.z1 - 1)
+      this.strikeAt(x, z, 1.5)
+    }
+    if (s.left === 0) {
+      c.water = c.capacity
+      if (this.daylight >= T.rainbow.minDaylight) {
+        this.rainbow = { x: c.x, z: c.z, age: 0 }
+        this.wish('rainbow')
+        this.hooks.onRainbow?.(this.rainbow)
+      }
+      this.hooks.onStormEnd?.()
+    }
+  }
+
+  /** What the weather does to the lawn, and how a greener lawn charges the storm. */
+  private weatherGround(dt: number) {
+    const g = this.ground
+    const c = this.cloud
+    let greened = 0
+    if (c.raining) greened += g.rain(c.x, c.z, this.radius, this.softEdge, this.rainIntensity * dt)
+    if (this.storming) {
+      const S = T.storm
+      g.rain(c.x, c.z, S.radius, S.softEdge, S.rain * dt)
+      g.blow(c.x, c.z, S.radius, c.windX, c.windZ, S.gust * T.ground.bendRate * dt)
+    }
+    if (c.breezing) {
+      g.blow(c.x, c.z, this.radius + T.wind.reach, c.windX, c.windZ, T.ground.bendRate * dt)
+    }
+    g.settle(dt, this.daylight)
+    this.charge(greened * T.storm.perGreen)
+  }
+
+  private charge(by: number) {
+    const s = this.storm
+    if (by <= 0 || this.storming || s.charge >= 1) return
+    s.charge = Math.min(1, s.charge + by)
+    if (s.charge >= 1) this.hooks.onStormReady?.()
   }
 
   private tend(p: Plant, dt: number, day: number) {
@@ -482,6 +602,9 @@ export class Garden {
 
   private bloom(p: Plant) {
     this.cloud.capacity = Math.min(T.cloud.maxCapacity, this.cloud.capacity + T.cloud.capacityPerBloom)
+    const b = T.ground.bloomGreen
+    this.ground.greenDisc(p.x, p.z, b.radius, b.amount)
+    this.charge(T.storm.perBloom)
     this.wish('first-bloom')
     if (p.kind === 'apple') this.wish('apples')
     if (p.kind === 'sunflower') this.wish('sunflower')
@@ -523,7 +646,8 @@ export class Garden {
     // Wildflowers look after themselves; rain just hurries them along.
     for (const f of this.wildflowers) {
       if (f.growth >= 1) continue
-      const wet = this.cloud.raining ? this.coverage(f.x, f.z) : 0
+      let wet = this.cloud.raining ? this.coverage(f.x, f.z) : 0
+      if (this.storming) wet = 1
       f.growth = Math.min(1, f.growth + ((1 + T.wild.rainBoost * wet) / T.wild.secondsToGrow) * dt)
     }
   }
@@ -531,6 +655,7 @@ export class Garden {
   private age(dt: number) {
     if (this.rainbow && (this.rainbow.age += dt) > T.rainbow.lasts) this.rainbow = null
     if (this.strike && (this.strike.age += dt) > 1) this.strike = null
+    for (const m of this.marks) m.age += dt
   }
 
   private assess(p: Plant, day: number) {

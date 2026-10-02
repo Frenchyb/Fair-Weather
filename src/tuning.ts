@@ -110,8 +110,63 @@ export const T = {
     /** Soil it strikes stays rich this long, and rich soil grows this much faster. */
     richFor: 150,
     richBoost: 1,
-    /** Wildflower seed it scatters on bare lawn. */
+    /** Wildflower seed it scatters in a ring round the strike. */
     seeds: 10,
+    ring: 1.5,
+    /** It greens the grass round it once the scorch has faded. */
+    greenRadius: 3,
+    green: 0.85,
+    /** Seconds until the scorch has a fairy ring of mushrooms. */
+    ringAfter: 30,
+    /** Scorch marks remembered; the oldest go first. */
+    marks: 40,
+  },
+
+  /** The lawn: rain greens it for good, and leaves it wet for a while. */
+  ground: {
+    /** Grid cell size, metres. */
+    cell: 0.5,
+    /** The lawn starts parched and patchy. */
+    startGreen: 0.14,
+    greenNoise: 0.16,
+    /** Green added per second under the middle of a reference-sized shower. */
+    greenRate: 0.4,
+    /** Green grass creeps into drier neighbours: fraction of the gap per second. */
+    creep: 0.02,
+    creepEvery: 0.5,
+    /** A plant coming into bloom greens the grass round it. */
+    bloomGreen: { radius: 2.4, amount: 0.75 },
+    /** Surface water added per second under the middle of a reference shower. */
+    wetRate: 0.25,
+    maxWet: 1.6,
+    /** Above this the water stands in puddles. */
+    puddleAt: 1,
+    /** Surface water lost per second, in any light and in full sun. */
+    dryBase: 0.003,
+    drySun: 0.008,
+    /** Seconds for laid-over grass to stand most of the way back up. */
+    bendFade: 25,
+    /** How quickly the breeze lays the grass over (1/s). */
+    bendRate: 3,
+  },
+
+  /** The big one: charged by a greener, bloomier garden, called with G. */
+  storm: {
+    /** Charge at the start, so the first storm isn't far off. */
+    start: 0.6,
+    perBloom: 0.2,
+    /** Charge per square metre of lawn the player greens (the storm's own doesn't count). */
+    perGreen: 1 / 80,
+    lasts: 22,
+    radius: 6.5,
+    softEdge: 3,
+    /** Rain per unit area, relative to a reference-sized cloud. */
+    rain: 0.6,
+    /** Plant moisture added per second, never past what each plant likes. */
+    soak: 0.04,
+    strikes: 4,
+    /** It blows as it rains, laying the grass over. */
+    gust: 0.9,
   },
 
   rainbow: {
@@ -139,7 +194,10 @@ export const T = {
     startSpread: 0.25,
     /** How briskly it gathers or spreads (1/s). */
     spreadRate: 4,
-    height: 2.5,
+    /** Height the cloud floats at: above the oak and the roof. */
+    height: 9,
+    /** Drawn this much wider than the rain it drops: a cloud is bigger than its shower. */
+    look: 2.3,
     /** How briskly it drifts to the pointer (1/s). */
     followRate: 3,
     startWater: 0.8,
@@ -268,25 +326,35 @@ export const T = {
 
   camera: {
     /** Ground width across the screen, and where the view starts. */
-    viewWidth: 24,
+    viewWidth: 26,
     startX: -2,
     startZ: 1,
+    /** Looking down at this angle (degrees above the horizon). */
+    pitch: 38,
+    /** Zoom limits as a multiple of the starting distance, and per scroll pixel. */
+    zoom: [0.45, 1.7] as [number, number],
+    zoomPerPixel: 0.0012,
+    /** Turn speed with Q / E (radians per second). */
+    turnSpeed: 1.4,
     /** Pan speed (m/s) from keys or from the pointer at the screen's edge. */
     panSpeed: 9,
     edge: 0.06,
   },
 
   input: {
-    /** Spread change per pixel of scroll, and per key press. */
-    spreadPerPixel: 0.0015,
+    /** Spread change per key press. */
     spreadPerKey: 0.15,
   },
 
   render: {
     /** How dark the cloud's shade looks, as a brightness multiplier. */
     shadeDarkness: 0.55,
-    rainDrops: 500,
-    rainSpeed: 7,
+    rainDrops: 3000,
+    rainSpeed: 16,
+    grassClumps: 45000,
+    fogBanks: 40,
+    /** Seconds a fog bank lingers after it settles. */
+    fogLingers: 60,
     beesPerPlant: 2,
     butterflies: 24,
     fireflies: 140,

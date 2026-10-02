@@ -1,16 +1,25 @@
 /**
- * The garden on screen: the scenery, the raised bed and every plant, the cloud,
- * its rain, fog and shade, the sky from morning to night, and a camera that
- * pans around the yard. Reads the garden every frame and never writes to it.
+ * The garden on screen: the countryside round it, the lawn and what the
+ * weather leaves on it, the raised bed and every plant, the cloud high
+ * overhead, the sky from morning to night, and a camera that pans, turns and
+ * zooms. Reads the garden every frame and never writes to it.
  */
 import * as THREE from 'three'
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
+import { N8AOPass } from 'n8ao'
 import { onBed, type Garden, type Plant } from '../sim/garden'
 import { sunDirection } from '../sim/sky'
 import { T } from '../tuning'
+import { CloudView } from './cloud'
 import { Effects } from './effects'
+import { GroundView } from './ground'
+import { Horizon } from './horizon'
 import { needIcons } from './icons'
 import { PlantView } from './plants'
-import { shadeUniforms } from './shade'
+import { fieldUniforms, shadeUniforms } from './shade'
 import { WindView } from './wind'
 import { World, lambert } from './world'
 
@@ -19,60 +28,70 @@ const WET = new THREE.Color(0x4a3524)
 const SOAKED = new THREE.Color(0x3a3a40)
 const MULCH_DRY = new THREE.Color(0x8a6a48)
 
-const SKY_DAY = new THREE.Color(0xbcdcf0)
-const SKY_DUSK = new THREE.Color(0xe9a87c)
-const SKY_NIGHT = new THREE.Color(0x141c33)
+const ZENITH_DAY = new THREE.Color(0x3d7cc9)
+const HORIZON_DAY = new THREE.Color(0xd3e4ee)
+const ZENITH_NIGHT = new THREE.Color(0x070b18)
+const HORIZON_NIGHT = new THREE.Color(0x1a2440)
+const HORIZON_DUSK = new THREE.Color(0xf0a070)
+const STORM = new THREE.Color(0x4a525c)
 
 export class GardenScene {
   readonly renderer: THREE.WebGLRenderer
-  readonly camera = new THREE.PerspectiveCamera(38, 1, 0.1, 300)
+  readonly camera = new THREE.PerspectiveCamera(38, 1, 0.5, 2500)
   /** The point on the ground the camera looks at. Panning moves it. */
   readonly focus = new THREE.Vector2(T.camera.startX, T.camera.startZ)
+  /** Which way the camera faces, radians: 0 looks north from the south side. */
+  yaw = 0
+  private zoom = 1
   private scene = new THREE.Scene()
+  private composer: EffectComposer
+  private ao: N8AOPass | null = null
+  private plain: RenderPass
+  private bloom: UnrealBloomPass
+  private pixelRatio: number
+  private slow = 0
   private world = new World()
-  private hemi = new THREE.HemisphereLight(0xe4f2ff, 0x5d7a3e, 1.5)
-  private sun = new THREE.DirectionalLight(0xfff0d0, 2.4)
+  private horizon = new Horizon()
+  private hemi = new THREE.HemisphereLight(0xdfeeff, 0x4d6a32, 0.9)
+  private sun = new THREE.DirectionalLight(0xfff0d8, 3.2)
   private moon = new THREE.DirectionalLight(0x8fa8ff, 0)
-  private sky = new THREE.Color()
+  private fogColor = new THREE.Color()
   private plants: PlantView[] = []
-  private soil: THREE.MeshLambertMaterial[] = []
+  private soil: THREE.MeshStandardMaterial[] = []
   private icons: THREE.Sprite[] = []
   private iconTex = needIcons()
-  private cloud = new THREE.Group()
-  private cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x9aa6b0, transparent: true })
-  private puffs: THREE.Mesh[] = []
-  private cloudY: number = T.cloud.height
-  private rain: THREE.LineSegments
-  private drops: { x: number; y: number; z: number; live: boolean }[] = []
-  private mist: THREE.Points
-  private mistDots: { t: number; ox: number; oz: number }[] = []
   private bees: THREE.Group[] = []
   private wind: WindView
   private effects: Effects
+  private ground: GroundView
+  private cloud: CloudView
   private ray = new THREE.Raycaster()
   private dist = 20
+  private gust = 0
 
   constructor(private canvas: HTMLCanvasElement, garden: Garden) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' })
+    this.pixelRatio = Math.min(window.devicePixelRatio, 2)
+    this.renderer.setPixelRatio(this.pixelRatio)
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.05
+    this.renderer.toneMappingExposure = 1.0
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
 
     const s = this.scene
-    s.background = this.sky
-    s.fog = new THREE.Fog(0xc9e2ef, 30, 75)
+    s.fog = new THREE.Fog(0xd3e4ee, 90, 700)
     s.add(this.hemi, this.sun, this.sun.target, this.moon, this.moon.target)
     this.sun.castShadow = true
-    this.sun.shadow.mapSize.set(2048, 2048)
-    Object.assign(this.sun.shadow.camera, { left: -20, right: 20, top: 16, bottom: -16, far: 80 })
-    this.sun.shadow.bias = -0.0005
-    this.sun.shadow.normalBias = 0.03
-    s.add(this.world.root)
+    this.sun.shadow.mapSize.set(4096, 4096)
+    this.sun.shadow.bias = -0.0004
+    this.sun.shadow.normalBias = 0.04
+    this.sun.shadow.radius = 3
+    s.add(this.horizon.root, this.world.root)
+    s.environment = this.skyLight()
 
     this.buildBed()
-    this.buildCloud()
+    this.ground = new GroundView(s, garden)
+    this.cloud = new CloudView(s)
 
     for (const p of garden.plants) {
       const view = new PlantView(p.kind)
@@ -85,45 +104,25 @@ export class GardenScene {
         const r = (T.kinds[p.kind].reach ?? 0.5) * 0.85
         const ring = new THREE.Mesh(new THREE.CircleGeometry(r, 24), mat)
         ring.rotation.x = -Math.PI / 2
-        ring.position.set(p.x, 0.015, p.z)
+        ring.position.set(p.x, 0.02, p.z)
         ring.receiveShadow = true
         s.add(ring)
         this.soil.push(mat)
       }
-      const icon = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, opacity: 0, depthWrite: false }))
-      icon.scale.setScalar(0.55)
+      const icon = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, opacity: 0, depthWrite: false, fog: false }))
+      icon.scale.setScalar(0.6)
       icon.renderOrder = 10
       s.add(icon)
       this.icons.push(icon)
     }
 
-    // Rain: short streaks recycled from a fixed pool.
-    const n = T.render.rainDrops
-    this.rain = new THREE.LineSegments(
-      new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 6), 3)),
-      new THREE.LineBasicMaterial({ color: 0x7fa6c8, transparent: true, opacity: 0.55 }),
-    )
-    this.rain.frustumCulled = false
-    for (let i = 0; i < n; i++) this.drops.push({ x: 0, y: -10, z: 0, live: false })
-    s.add(this.rain)
-
-    // Mist lifting off the pond while the cloud drinks.
-    const m = 120
-    this.mist = new THREE.Points(
-      new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(m * 3), 3)),
-      new THREE.PointsMaterial({ color: 0xffffff, size: 0.12, transparent: true, opacity: 0.7, depthWrite: false }),
-    )
-    this.mist.frustumCulled = false
-    for (let i = 0; i < m; i++) this.mistDots.push({ t: i / m, ox: 0, oz: 0 })
-    s.add(this.mist)
-
     this.wind = new WindView(s, garden.plants.length)
     this.effects = new Effects(s, garden)
 
     const beeBody = new THREE.SphereGeometry(0.045, 8, 6)
-    const beeMat = new THREE.MeshLambertMaterial({ color: 0xe6b422 })
+    const beeMat = new THREE.MeshStandardMaterial({ color: 0xe6b422 })
     const wingMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 })
-    const stripeMat = new THREE.MeshLambertMaterial({ color: 0x2a2018 })
+    const stripeMat = new THREE.MeshStandardMaterial({ color: 0x2a2018 })
     for (let i = 0; i < garden.plants.length * T.render.beesPerPlant; i++) {
       const bee = new THREE.Group()
       const body = new THREE.Mesh(beeBody, beeMat)
@@ -138,6 +137,49 @@ export class GardenScene {
       s.add(bee)
       this.bees.push(bee)
     }
+
+    // Ambient occlusion and a touch of bloom, then tone mapping.
+    this.composer = new EffectComposer(this.renderer)
+    this.plain = new RenderPass(s, this.camera)
+    try {
+      this.ao = new N8AOPass(s, this.camera, 1, 1)
+      Object.assign(this.ao.configuration, {
+        aoRadius: 1.6,
+        distanceFalloff: 0.6,
+        intensity: 2.2,
+        halfRes: true,
+        gammaCorrection: false,
+      })
+      this.ao.setQualityMode('Medium')
+      this.composer.addPass(this.ao)
+    } catch {
+      this.ao = null
+      this.composer.addPass(this.plain)
+    }
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.28, 0.5, 0.92)
+    this.composer.addPass(this.bloom)
+    this.composer.addPass(new OutputPass())
+  }
+
+  /** Soft light from the whole sky, for the shiny bits (puddles, the pond) to reflect. */
+  private skyLight() {
+    const env = new THREE.Scene()
+    const dome = new THREE.Mesh(
+      new THREE.SphereGeometry(10, 32, 16),
+      new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        vertexShader: 'varying vec3 vP; void main() { vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: `varying vec3 vP; void main() { float y = normalize(vP).y;
+          vec3 c = mix(vec3(0.75, 0.85, 0.92), vec3(0.32, 0.55, 0.85), clamp(y, 0.0, 1.0));
+          c = mix(c, vec3(0.25, 0.3, 0.18), smoothstep(0.0, -0.2, y));
+          gl_FragColor = vec4(c, 1.0); }`,
+      }),
+    )
+    env.add(dome)
+    const pm = new THREE.PMREMGenerator(this.renderer)
+    const tex = pm.fromScene(env, 0).texture
+    pm.dispose()
+    return tex
   }
 
   private buildBed() {
@@ -174,30 +216,6 @@ export class GardenScene {
     }
   }
 
-  private buildCloud() {
-    const geo = new THREE.IcosahedronGeometry(1, 2)
-    const puffs: [number, number, number, number][] = [
-      [0, 0, 0, 0.62],
-      [0.55, -0.08, 0.1, 0.48],
-      [-0.55, -0.1, -0.05, 0.5],
-      [0.2, 0.25, -0.2, 0.45],
-      [-0.25, 0.2, 0.25, 0.42],
-      [0.85, -0.2, -0.25, 0.32],
-      [-0.85, -0.22, 0.25, 0.34],
-      [0.05, -0.18, 0.45, 0.38],
-      [0.1, -0.15, -0.5, 0.4],
-    ]
-    for (const [x, y, z, s] of puffs) {
-      const p = new THREE.Mesh(geo, this.cloudMat)
-      p.position.set(x, y, z).multiplyScalar(T.cloud.size.reference)
-      p.scale.setScalar(s * T.cloud.size.reference)
-      p.userData.base = p.position.clone()
-      this.cloud.add(p)
-      this.puffs.push(p)
-    }
-    this.scene.add(this.cloud)
-  }
-
   /** Point on the ground under a pointer at client (CSS pixel) coordinates. */
   groundPointAt(clientX: number, clientY: number) {
     const rect = this.canvas.getBoundingClientRect()
@@ -232,11 +250,24 @@ export class GardenScene {
     return best
   }
 
-  /** Move the view across the garden, staying over the yard. */
-  pan(dx: number, dz: number) {
+  /** Move the view across the garden, `right` and `toward` the viewer as seen on screen. */
+  pan(right: number, toward: number) {
+    const c = Math.cos(this.yaw)
+    const s = Math.sin(this.yaw)
     const y = T.yard
-    this.focus.x = THREE.MathUtils.clamp(this.focus.x + dx, y.x0 + 6, y.x1 - 6)
-    this.focus.y = THREE.MathUtils.clamp(this.focus.y + dz, y.z0 + 4, y.z1 - 3)
+    this.focus.x = THREE.MathUtils.clamp(this.focus.x + right * c + toward * s, y.x0 + 4, y.x1 - 4)
+    this.focus.y = THREE.MathUtils.clamp(this.focus.y - right * s + toward * c, y.z0 + 3, y.z1 - 2)
+    this.placeCamera()
+  }
+
+  turn(by: number) {
+    this.yaw += by
+    this.placeCamera()
+  }
+
+  zoomBy(factor: number) {
+    const [lo, hi] = T.camera.zoom
+    this.zoom = THREE.MathUtils.clamp(this.zoom * factor, lo, hi)
     this.placeCamera()
   }
 
@@ -244,20 +275,29 @@ export class GardenScene {
     const w = this.canvas.clientWidth
     const h = this.canvas.clientHeight
     this.renderer.setSize(w, h)
+    this.composer.setPixelRatio(this.pixelRatio)
+    this.composer.setSize(w, h)
     const aspect = w / h
     this.camera.aspect = aspect
     const vfov = THREE.MathUtils.degToRad(this.camera.fov)
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * aspect)
     // Show about `viewWidth` metres across, but never so little depth that the view feels cramped.
-    this.dist = Math.max(T.camera.viewWidth / 2 / Math.tan(hfov / 2), 7 / Math.tan(vfov / 2))
+    this.dist = Math.max(T.camera.viewWidth / 2 / Math.tan(hfov / 2), 8 / Math.tan(vfov / 2))
     this.camera.updateProjectionMatrix()
     this.placeCamera()
   }
 
   private placeCamera() {
     const look = new THREE.Vector3(this.focus.x, 0, this.focus.y)
-    const dir = new THREE.Vector3(0, 0.82, 1).normalize()
-    this.camera.position.copy(look).addScaledVector(dir, this.dist)
+    // Zoomed in, the camera drops lower for a view across the garden; zoomed out, it looks down.
+    const pitch = THREE.MathUtils.degToRad(T.camera.pitch + (this.zoom - 1) * 14)
+    const d = this.dist * this.zoom
+    const dir = new THREE.Vector3(
+      Math.sin(this.yaw) * Math.cos(pitch),
+      Math.sin(pitch),
+      Math.cos(this.yaw) * Math.cos(pitch),
+    )
+    this.camera.position.copy(look).addScaledVector(dir, d)
     this.camera.lookAt(look)
   }
 
@@ -267,39 +307,27 @@ export class GardenScene {
     const day = garden.daylight
     const night = 1 - day
 
-    this.light(garden, day)
+    this.gust += ((garden.storming ? 1 : c.breezing ? 0.35 : 0) - this.gust) * (1 - Math.exp(-dt * 1.5))
+    this.light(garden, day, dt)
     shadeUniforms.uCloud.value.set(c.x, c.z)
     shadeUniforms.uRadius.value = garden.radius
     shadeUniforms.uSoft.value = garden.softEdge
     shadeUniforms.uDark.value = THREE.MathUtils.lerp(1, T.render.shadeDarkness, day)
+    shadeUniforms.uStorm.value += ((garden.storming ? 1 : 0) - shadeUniforms.uStorm.value) * (1 - Math.exp(-dt))
+    fieldUniforms.uTime.value = t
+    fieldUniforms.uGust.value = this.gust
+    fieldUniforms.uWind.value.set(c.windX, c.windZ)
 
-    // Cloud: as wide as its shade, puffier the more it holds, grey when raining,
-    // and down low and thin when it's lying as fog.
-    const k = 1 - Math.exp(-dt * 3)
-    this.cloudY += ((c.fogging ? 0.55 : T.cloud.height) - this.cloudY) * k
-    this.cloud.position.set(c.x, this.cloudY + Math.sin(t * 0.8) * 0.06, c.z)
-    const wide = garden.radius / T.cloud.size.reference
-    const fill = c.water / c.capacity
-    const tall = c.fogging ? 0.35 : wide * (0.55 + 0.25 * fill) + 0.2
-    this.cloud.scale.set(wide, tall, wide)
-    this.puffs.forEach((p, i) => {
-      const base = p.userData.base as THREE.Vector3
-      p.position.set(base.x, base.y + Math.sin(t * 1.1 + i) * 0.03, base.z)
-    })
-    const grey = c.raining ? 0.25 : 0
-    const glow = 0.25 + 0.75 * day
-    this.cloudMat.emissive.lerp(new THREE.Color(0x9aa6b0).multiplyScalar((1 - grey) * glow), k)
-    this.cloudMat.color.lerp(new THREE.Color(1 - grey, 1 - grey, 1 - grey * 0.8), k)
-    this.cloudMat.opacity += ((c.fogging ? 0.5 : 1) - this.cloudMat.opacity) * k
-
-    this.updateRain(garden, dt)
-    this.updateMist(garden, dt)
+    this.cloud.update(garden, dt)
+    this.ground.update(garden, dt)
+    this.horizon.update(t, dt)
     this.world.setNight(night)
     this.world.fadeOak(c.x, c.z, dt)
 
     garden.plants.forEach((p, i) => {
       const view = this.plants[i]
-      view.update(p, t, garden.breezeAt(p.x, p.z), c.windX, c.windZ, night)
+      const breeze = Math.max(garden.breezeAt(p.x, p.z), this.gust * 0.8)
+      view.update(p, t, breeze, c.windX, c.windZ, night)
       const m = p.moisture
       const soil = this.soil[i]
       soil.color.copy(p.inBed ? DRY : MULCH_DRY).lerp(WET, Math.min(1, m / 0.75))
@@ -312,93 +340,87 @@ export class GardenScene {
       mat.opacity += (want - mat.opacity) * (1 - Math.exp(-dt * 5))
       mat.needsUpdate = true
       icon.visible = mat.opacity > 0.02
-      icon.position.set(p.x, view.top + 0.42 + Math.sin(t * 2 + i) * 0.04, p.z)
+      icon.position.set(p.x, view.top + 0.45 + Math.sin(t * 2 + i) * 0.04, p.z)
     })
 
     this.wind.update(garden, dt)
     this.effects.update(garden, this.camera, dt)
     this.updateBees(garden)
-    this.renderer.render(this.scene, this.camera)
+    this.adapt(dt)
+    this.composer.render(dt)
   }
 
-  /** Sky colour, sun and moon, and the lightning flash. */
-  private light(garden: Garden, day: number) {
-    const dusk = Math.max(0, 1 - Math.abs(day - 0.45) / 0.35) * (day < 0.98 ? 1 : 0)
-    this.sky.copy(SKY_NIGHT).lerp(SKY_DAY, day).lerp(SKY_DUSK, dusk * 0.45)
-    const flash = this.effects?.flash ?? 0
-    if (flash > 0) this.sky.lerp(new THREE.Color(0xf4f6ff), flash * 0.5)
-    ;(this.scene.fog as THREE.Fog).color.copy(this.sky)
+  /**
+   * Keep it smooth on slower machines: if frames run long for a few seconds,
+   * render fewer pixels, and as a last resort drop the ambient occlusion.
+   */
+  private adapt(dt: number) {
+    this.slow = dt > 1 / 38 ? this.slow + dt : Math.max(0, this.slow - dt * 0.5)
+    if (this.slow < 3) return
+    this.slow = 0
+    if (this.pixelRatio > 1) {
+      this.pixelRatio = Math.max(1, this.pixelRatio - 0.25)
+      this.renderer.setPixelRatio(this.pixelRatio)
+      this.resize()
+    } else if (this.ao) {
+      this.composer.removePass(this.ao)
+      this.composer.insertPass(this.plain, 0)
+      this.ao = null
+    }
+  }
 
-    this.hemi.intensity = 0.35 + 1.15 * day + flash * 2
-    this.hemi.color.setHex(0xe4f2ff).lerp(new THREE.Color(0x6f80b8), 1 - day)
+  /** Sky colour, sun and moon, storm gloom and the lightning flash. */
+  private light(garden: Garden, day: number, dt: number) {
+    const dusk = Math.max(0, 1 - Math.abs(day - 0.45) / 0.35) * (day < 0.98 ? 1 : 0)
+    const gloom = shadeUniforms.uStorm.value * 0.75
+    const flash = this.effects?.flash ?? 0
+    const sky = this.horizon.sky.uniforms
+    const zenith = (sky.uZenith.value as THREE.Color).copy(ZENITH_NIGHT).lerp(ZENITH_DAY, day).lerp(STORM, gloom * day)
+    const horizon = (sky.uHorizon.value as THREE.Color)
+      .copy(HORIZON_NIGHT)
+      .lerp(HORIZON_DAY, day)
+      .lerp(HORIZON_DUSK, dusk * 0.5)
+      .lerp(STORM, gloom * day * 0.8)
+    if (flash > 0) {
+      zenith.lerp(new THREE.Color(0xe8ecff), flash * 0.6)
+      horizon.lerp(new THREE.Color(0xf4f6ff), flash * 0.6)
+    }
+    ;(sky.uGround.value as THREE.Color).copy(horizon).multiplyScalar(0.7)
+    this.fogColor.copy(horizon)
+    ;(this.scene.fog as THREE.Fog).color.copy(this.fogColor)
+
     const s = sunDirection(garden.time)
+    const sunDir = new THREE.Vector3(s.x, s.y, s.z).normalize()
+    ;(sky.uSunDir.value as THREE.Vector3).copy(sunDir)
+    sky.uSun.value = day * (1 - gloom)
+    ;(sky.uSunColor.value as THREE.Color).setHex(0xfff2d8).lerp(new THREE.Color(0xffa060), dusk * 0.7)
+
+    this.scene.environmentIntensity = (0.12 + 0.55 * day) * (1 - gloom * 0.5) + flash
+    this.hemi.intensity = (0.25 + 0.75 * day) * (1 - gloom * 0.4) + flash * 2
+    this.hemi.color.setHex(0xdfeeff).lerp(new THREE.Color(0x6f80b8), 1 - day)
+
+    // The shadow box follows the view and grows when zoomed out.
     const f = new THREE.Vector3(this.focus.x, 0, this.focus.y)
-    this.sun.position.set(f.x + s.x * 30, s.y * 30, f.z + s.z * 30)
+    const box = 16 + 12 * this.zoom
+    const cam = this.sun.shadow.camera
+    if (cam.right !== box) {
+      Object.assign(cam, { left: -box, right: box, top: box, bottom: -box, near: 1, far: 140 })
+      cam.updateProjectionMatrix()
+    }
+    this.sun.position.copy(f).addScaledVector(sunDir, 60)
     this.sun.target.position.copy(f)
-    this.sun.intensity = 2.4 * day
-    this.sun.color.setHex(0xfff0d0).lerp(new THREE.Color(0xffb070), dusk * 0.6)
+    this.sun.intensity = 3.2 * day * (1 - gloom * 0.7)
+    this.sun.color.setHex(0xfff0d8).lerp(new THREE.Color(0xffa868), dusk * 0.6)
     this.moon.position.set(f.x - 10, 25, f.z + 12)
     this.moon.target.position.copy(f)
-    this.moon.intensity = 0.55 * (1 - day)
-  }
-
-  private updateRain(garden: Garden, dt: number) {
-    const c = garden.cloud
-    const pos = this.rain.geometry.attributes.position as THREE.BufferAttribute
-    const arr = pos.array as Float32Array
-    const fall = T.render.rainSpeed * dt
-    let spawn = c.raining ? Math.ceil(T.render.rainDrops * dt * 1.6) : 0
-    const len = 0.28
-    this.drops.forEach((d, i) => {
-      if (d.live) {
-        d.y -= fall
-        const floor = onBed(d.x, d.z) ? T.bed.height : 0
-        if (d.y < floor) d.live = false
-      }
-      if (!d.live && spawn > 0) {
-        spawn--
-        const a = Math.random() * Math.PI * 2
-        const r = Math.sqrt(Math.random()) * garden.radius
-        d.x = c.x + Math.cos(a) * r
-        d.z = c.z + Math.sin(a) * r
-        d.y = T.cloud.height - 0.3 - Math.random() * 0.4
-        d.live = true
-      }
-      const y = d.live ? d.y : -10
-      arr.set([d.x, y, d.z, d.x, y + len, d.z], i * 6)
-    })
-    pos.needsUpdate = true
-  }
-
-  private updateMist(garden: Garden, dt: number) {
-    const c = garden.cloud
-    const on = c.refilling
-    const mat = this.mist.material as THREE.PointsMaterial
-    mat.opacity += ((on ? 0.65 : 0) - mat.opacity) * (1 - Math.exp(-dt * 3))
-    this.mist.visible = mat.opacity > 0.01
-    if (!this.mist.visible) return
-    const pos = this.mist.geometry.attributes.position as THREE.BufferAttribute
-    this.mistDots.forEach((m, i) => {
-      m.t += dt * 0.45
-      if (m.t > 1) {
-        m.t -= 1
-        const a = Math.random() * Math.PI * 2
-        const r = Math.sqrt(Math.random()) * T.pond.radius * 0.9
-        m.ox = Math.cos(a) * r
-        m.oz = Math.sin(a) * r
-      }
-      const s = m.t
-      const x = T.pond.x + m.ox
-      const z = T.pond.z + m.oz
-      pos.setXYZ(i, x + (c.x - x) * s * s, 0.05 + s * (T.cloud.height - 0.4), z + (c.z - z) * s * s)
-    })
-    pos.needsUpdate = true
+    this.moon.intensity = 0.6 * (1 - day)
+    void dt
   }
 
   private updateBees(garden: Garden) {
     const t = garden.time
     const per = T.render.beesPerPlant
-    const awake = garden.daylight > 0.4
+    const awake = garden.daylight > 0.4 && !garden.storming
     garden.plants.forEach((p, i) => {
       const bloomed = p.growth >= 1 && awake
       const top = this.plants[i].top

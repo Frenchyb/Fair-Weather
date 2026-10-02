@@ -16,11 +16,27 @@ three.js, Vite, vitest. Concept and plan: `/mnt/project-files/weather-game/conce
 
 ## Gotchas
 
+- **Weather leaves marks (Rick, 2026-10-02: "lack of lasting effects").** The lawn
+  is a grid in `sim/ground.ts`: green (only ever rises, like growth), surface
+  water (puddles above `puddleAt`) and how far the grass is laid over. The
+  renderer packs it into a small texture each frame (`render/ground.ts`) that
+  the lawn, the paving and the grass blades all sample in their shaders
+  (`render/shade.ts`). Lightning marks are kept for good and heal into fairy
+  rings. New weather should leave something behind too.
+- **The cloud floats at `T.cloud.height` (9 m), above the oak and the roof,** and is
+  drawn `T.cloud.look` times wider than the shower it drops. The pointer still
+  marks the ground where the rain lands, not the cloud: the AC-130 game learned
+  that effects landing away from the pointer read as a bug. The faint veil from
+  the cloud's base to the ground is what joins the two up.
+- The storm (G) is charged by greening the lawn and by blooms, waters plants only
+  up to what each likes (a gift, never a soaking), and ends with the cloud full.
+- Post-processing is n8ao (ambient occlusion) plus bloom. `GardenScene.adapt`
+  drops resolution, then AO, if frames run long; headless checks end up at 1x.
 - The cloud's shade is painted by `render/shade.ts` from the same radius and soft
   edge the sim uses for light, not by a shadow map, so what you see is exactly
   what the plants feel. The cloud itself casts no shadow.
 - At its default spread one cloud waters one plant (plants sit 1.1 m apart). The
-  player can spread it wide (scroll, Q/E) to water several gently: rain per area
+  player can spread it wide (X, or Z to gather) to water several gently: rain per area
   falls with the square of the radius, so wide is never a free win. Each bloom
   raises `capacity`, which is what lets it spread wider. Tests cover all of this.
 - **Calm over busy (Rick, 2026-10-02):** v1 felt stressful, "bouncing around
@@ -31,6 +47,7 @@ three.js, Vite, vitest. Concept and plan: `/mnt/project-files/weather-game/conce
   pollinates open flowers (a growth bonus, never required) and carries seed
   from bloomed plants into the lawn, where wildflowers grow by themselves.
   Seed scatter uses the garden's own seeded random, so tests are repeatable.
+- Wheel zooms and Q/E turn the view; spread moved to Z/X in round 4.
 - The pointer is projected onto the bed's top (`y = T.bed.height`) using the
   canvas's own `getBoundingClientRect()`. Check in Playwright at
   `deviceScaleFactor: 2`; the AC-130 game lost three rounds to a Retina bug.

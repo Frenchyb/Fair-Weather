@@ -370,6 +370,151 @@ describe('the breeze', () => {
   })
 })
 
+describe('the lawn remembers the weather', () => {
+  const lawnSpot = { x: 2, z: 6 }
+
+  it('rain greens dry grass, and it stays green after the ground dries', () => {
+    const g = new Garden()
+    const before = g.ground.greenAt(lawnSpot.x, lawnSpot.z)
+    expect(before).toBeLessThan(0.4)
+    parkOver(g, lawnSpot.x, lawnSpot.z)
+    run(g, 4, { target: lawnSpot, rain: true })
+    expect(g.ground.greenAt(lawnSpot.x, lawnSpot.z)).toBeGreaterThan(0.9)
+    expect(g.ground.wetAt(lawnSpot.x, lawnSpot.z)).toBeGreaterThan(0.5)
+    run(g, CYCLE, idle)
+    expect(g.ground.wetAt(lawnSpot.x, lawnSpot.z)).toBe(0)
+    expect(g.ground.greenAt(lawnSpot.x, lawnSpot.z)).toBeGreaterThan(0.9)
+  })
+
+  it('a long soak in one place leaves a puddle that dries in a minute or two', () => {
+    const g = new Garden()
+    parkOver(g, lawnSpot.x, lawnSpot.z)
+    g.cloud.water = 1
+    run(g, 7, { target: lawnSpot, rain: true })
+    expect(g.ground.deepestPuddle).toBeGreaterThan(0.15)
+    expect(g.journal.has('puddle')).toBe(true)
+    run(g, 30, idle)
+    expect(g.ground.deepestPuddle).toBeGreaterThan(0)
+    run(g, 120, idle)
+    expect(g.ground.deepestPuddle).toBe(0)
+  })
+
+  it('the breeze lays the grass over along the wind, and it stands back up', () => {
+    const g = new Garden()
+    parkOver(g, lawnSpot.x - 3, lawnSpot.z)
+    run(g, 1.5, { target: { x: lawnSpot.x + 3, z: lawnSpot.z }, rain: false, breeze: true })
+    const k = g.ground.index(lawnSpot.x, lawnSpot.z)
+    expect(g.ground.bendX[k]).toBeGreaterThan(0.3)
+    run(g, 90, idle)
+    expect(Math.hypot(g.ground.bendX[k], g.ground.bendZ[k])).toBeLessThan(0.05)
+  })
+
+  it('nothing greens the patio, the bed or the pond', () => {
+    const g = new Garden()
+    const patio = T.hardGround[1]
+    const spots = [
+      { x: (patio.x0 + patio.x1) / 2, z: (patio.z0 + patio.z1) / 2 },
+      { x: 0, z: 0 },
+      { x: T.pond.x, z: T.pond.z },
+    ]
+    for (const s of spots) {
+      parkOver(g, s.x, s.z)
+      g.cloud.water = 1
+      run(g, 3, { target: s, rain: true })
+      expect(g.ground.greenAt(s.x, s.z)).toBe(0)
+    }
+    // Wet paving darkens, but the pond doesn't count as a puddle.
+    expect(g.ground.wetAt(spots[0].x, spots[0].z)).toBeGreaterThan(0.3)
+    expect(g.ground.wetAt(T.pond.x, T.pond.z)).toBe(0)
+  })
+
+  it('green grass slowly creeps into its neighbours', () => {
+    const g = new Garden()
+    g.ground.greenDisc(lawnSpot.x, lawnSpot.z, 1, 1)
+    const edge = g.ground.greenAt(lawnSpot.x + 1.25, lawnSpot.z)
+    run(g, 60, idle)
+    expect(g.ground.greenAt(lawnSpot.x + 1.25, lawnSpot.z)).toBeGreaterThan(edge + 0.1)
+  })
+
+  it('a plant coming into bloom greens the grass round it', () => {
+    const g = new Garden()
+    const sun = kind(g, 'sunflower')
+    sun.growth = 0.999
+    sun.moisture = 0.7
+    run(g, 2, idle)
+    expect(sun.growth).toBe(1)
+    expect(g.ground.greenAt(sun.x + 1, sun.z)).toBeGreaterThan(0.5)
+  })
+})
+
+describe('lightning scars', () => {
+  it('leave a mark that is kept, green the grass, and ring with flowers', () => {
+    const g = new Garden()
+    const at = { x: 3, z: 6 }
+    parkOver(g, at.x, at.z)
+    g.cloud.water = 1
+    run(g, 0.2, { target: at, rain: false, spread: 0, strike: true })
+    expect(g.marks).toHaveLength(1)
+    expect(g.ground.greenAt(at.x + 1, at.z)).toBeGreaterThan(0.6)
+    run(g, T.lightning.ringAfter + 2, idle)
+    expect(g.journal.has('fairy-ring')).toBe(true)
+    const ring = g.wildflowers.filter((f) => Math.hypot(f.x - at.x, f.z - at.z) < T.lightning.ring * 1.4)
+    expect(ring.length).toBeGreaterThan(4)
+    for (const f of ring) expect(Math.hypot(f.x - at.x, f.z - at.z)).toBeGreaterThan(T.lightning.ring * 0.6)
+  })
+})
+
+describe('the storm', () => {
+  it('cannot be called until it has gathered, and greening the lawn gathers it', () => {
+    let refused = 0
+    let ready = 0
+    const g = new Garden({ onStormRefused: () => refused++, onStormReady: () => ready++ })
+    g.update(DT, { target: null, rain: false, storm: true })
+    expect(refused).toBe(1)
+    expect(g.storming).toBe(false)
+    // Rain over dry lawn until it has gathered.
+    const route = (g: Garden): Controls => {
+      const t = g.time
+      return { target: { x: -12 + ((t * 2) % 24), z: 7 + Math.sin(t) }, rain: true }
+    }
+    for (let i = 0; i < 40 && g.storm.charge < 1; i++) {
+      g.cloud.water = g.cloud.capacity
+      run(g, 5, route)
+    }
+    expect(ready).toBe(1)
+    expect(g.storm.charge).toBe(1)
+  })
+
+  it('rains wide, strikes a few times, then clears with the cloud full again', () => {
+    let strikes = 0
+    const g = new Garden({ onStrike: () => strikes++ })
+    g.storm.charge = 1
+    g.cloud.water = 0.1
+    parkOver(g, 0, 5)
+    g.update(DT, { target: { x: 0, z: 5 }, rain: false, storm: true })
+    expect(g.storming).toBe(true)
+    run(g, T.storm.lasts, { target: { x: 0, z: 5 }, rain: false })
+    expect(g.storming).toBe(false)
+    expect(strikes).toBe(T.storm.strikes)
+    expect(g.cloud.water).toBeCloseTo(g.cloud.capacity)
+    // Wide: grass greened well beyond an ordinary cloud's reach.
+    expect(g.ground.greenAt(4.5, 5)).toBeGreaterThan(0.8)
+    expect(g.journal.has('storm')).toBe(true)
+  })
+
+  it('waters every plant under it, but never past what each one likes', () => {
+    const g = new Garden()
+    g.storm.charge = 1
+    parkOver(g, 0, 0)
+    g.update(DT, { target: { x: 0, z: 0 }, rain: false, storm: true })
+    run(g, T.storm.lasts, { target: { x: 0, z: 0 }, rain: false })
+    for (const p of g.plants.filter((p) => p.inBed)) {
+      expect(p.moisture).toBeLessThanOrEqual(T.kinds[p.kind].moisture[1] + 1e-9)
+      expect(p.need === 'soggy').toBe(false)
+    }
+  })
+})
+
 describe('a whole garden', () => {
   /**
    * A simple-minded player: go to whichever unfinished plant is least happy and

@@ -22,10 +22,13 @@ export class Input {
   spread = T.cloud.startSpread
   /** Fog stays on until toggled off again. */
   fog = false
+  /** Camera zoom asked for since last read, as a multiplier. */
+  private zoomBy = 1
   /** Set on the first press, so audio can start inside a user gesture. */
   onFirstPress?: () => void
   onToggleJournal?: () => void
   private strikeAsked = false
+  private stormAsked = false
   private keys = new Set<string>()
   private rainMouse = false
   private rainKey = false
@@ -62,9 +65,9 @@ export class Input {
       'wheel',
       (e) => {
         e.preventDefault()
-        // Scroll up to spread the cloud wide, down to gather it in.
+        // Scroll (or pinch, which arrives as a wheel with ctrl held) to zoom.
         const pixels = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY
-        this.nudgeSpread(-pixels * T.input.spreadPerPixel)
+        this.zoomBy *= Math.exp(pixels * T.camera.zoomPerPixel * (e.ctrlKey ? 4 : 1))
       },
       { passive: false },
     )
@@ -76,10 +79,13 @@ export class Input {
       } else if (e.key === 'Shift') {
         this.breezeKey = true
         this.press()
-      } else if (e.code === 'KeyE' || e.code === 'Equal') {
+      } else if (e.code === 'KeyX' || e.code === 'Equal') {
         this.nudgeSpread(T.input.spreadPerKey)
-      } else if (e.code === 'KeyQ' || e.code === 'Minus') {
+      } else if (e.code === 'KeyZ' || e.code === 'Minus') {
         this.nudgeSpread(-T.input.spreadPerKey)
+      } else if (e.code === 'KeyG' && !e.repeat) {
+        this.stormAsked = true
+        this.press()
       } else if (e.code === 'KeyF' && !e.repeat) {
         this.fog = !this.fog
         this.press()
@@ -88,7 +94,7 @@ export class Input {
         this.press()
       } else if (e.code === 'KeyJ' && !e.repeat) {
         this.onToggleJournal?.()
-      } else if (PAN_KEYS[e.code]) {
+      } else if (PAN_KEYS[e.code] || e.code === 'KeyQ' || e.code === 'KeyE') {
         e.preventDefault()
         this.keys.add(e.code)
       }
@@ -109,6 +115,25 @@ export class Input {
     return this.breezeMouse || this.breezeKey
   }
 
+  /** True once per request for a storm. */
+  takeStorm() {
+    const s = this.stormAsked
+    this.stormAsked = false
+    return s
+  }
+
+  /** Zoom asked for since the last call, as a distance multiplier. */
+  takeZoom() {
+    const z = this.zoomBy
+    this.zoomBy = 1
+    return z
+  }
+
+  /** -1 to turn the view left (Q), 1 to turn it right (E). */
+  get turn() {
+    return (this.keys.has('KeyE') ? 1 : 0) - (this.keys.has('KeyQ') ? 1 : 0)
+  }
+
   /** True once per request for lightning. */
   takeStrike() {
     const s = this.strikeAsked
@@ -124,6 +149,7 @@ export class Input {
     let x = 0
     let z = 0
     for (const k of this.keys) {
+      if (!PAN_KEYS[k]) continue
       x += PAN_KEYS[k][0]
       z += PAN_KEYS[k][1]
     }

@@ -25,7 +25,7 @@ export class Effects {
     // Rainbow: seven thin arcs, nested.
     BANDS.forEach((color, i) => {
       const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false, fog: false })
-      const arc = new THREE.Mesh(new THREE.TorusGeometry(5.2 - i * 0.16, 0.085, 6, 64, Math.PI), mat)
+      const arc = new THREE.Mesh(new THREE.TorusGeometry(11 - i * 0.32, 0.17, 6, 96, Math.PI), mat)
       this.rainbow.add(arc)
       this.rainbowMats.push(mat)
     })
@@ -72,7 +72,7 @@ export class Effects {
     const wing = new THREE.CircleGeometry(0.09, 8)
     for (let i = 0; i < T.render.butterflies; i++) {
       const color = [0xf0a030, 0xffffff, 0x6fa8e8, 0xf5d142][i % 4]
-      const mat = new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide })
+      const mat = new THREE.MeshStandardMaterial({ color, side: THREE.DoubleSide })
       const b = new THREE.Group()
       for (const side of [-1, 1]) {
         const pivot = new THREE.Group()
@@ -120,7 +120,7 @@ export class Effects {
     const o = 0.42 * Math.min(fadeIn, fadeOut) * garden.daylight
     for (const m of this.rainbowMats) m.opacity = o
     // Stand it up beyond the shower, square on to the viewer.
-    this.rainbow.position.set(r.x, -0.6, r.z - 3)
+    this.rainbow.position.set(r.x, -1.5, r.z - 8)
     this.rainbow.rotation.y = Math.atan2(camera.position.x - r.x, camera.position.z - r.z) * 0.3
   }
 

@@ -1,5 +1,5 @@
 /**
- * The garden's fixed scenery: lawn, fence and hedge, the house and patio,
+ * The garden's fixed scenery: fence and hedge, the house and patio,
  * paths, shed, oak, pond, bird bath and bench. Built once; the only thing
  * that changes afterwards is the house windows glowing after dark.
  */
@@ -16,7 +16,12 @@ export function rng(seed: number) {
 }
 
 export function lambert(color: number | THREE.Color) {
-  return shaded(new THREE.MeshLambertMaterial({ color }))
+  return shaded(new THREE.MeshStandardMaterial({ color }))
+}
+
+/** Paving and stones: darken in the rain and hold puddles. */
+function paving(color: number | THREE.Color) {
+  return shaded(new THREE.MeshStandardMaterial({ color, roughness: 0.9 }), 'wet')
 }
 
 function add(parent: THREE.Object3D, mesh: THREE.Mesh, cast = true, receive = true) {
@@ -47,13 +52,12 @@ function gable(width: number, depth: number, rise: number) {
 
 export class World {
   readonly root = new THREE.Group()
-  private windows: THREE.MeshLambertMaterial
-  private oakLeaves: THREE.MeshLambertMaterial[] = []
+  private windows: THREE.MeshStandardMaterial
+  private oakLeaves: THREE.MeshStandardMaterial[] = []
   private r = rng(7)
 
   constructor() {
-    this.windows = new THREE.MeshLambertMaterial({ color: 0x9cc3d6, emissive: 0xffc070, emissiveIntensity: 0 })
-    this.lawn()
+    this.windows = new THREE.MeshStandardMaterial({ color: 0x9cc3d6, emissive: 0xffc070, emissiveIntensity: 0 })
     this.boundary()
     this.house()
     this.paths()
@@ -79,44 +83,6 @@ export class World {
   /** 0 by day, 1 at night: lights on in the house. */
   setNight(night: number) {
     this.windows.emissiveIntensity = night * 1.4
-  }
-
-  private lawn() {
-    const r = this.r
-    const ground = new THREE.PlaneGeometry(140, 140, 140, 140)
-    ground.rotateX(-Math.PI / 2)
-    const colors: number[] = []
-    const c = new THREE.Color()
-    for (let i = 0; i < ground.attributes.position.count; i++) {
-      c.setHSL(0.24 + r() * 0.03, 0.42, 0.36 + r() * 0.06)
-      colors.push(c.r, c.g, c.b)
-    }
-    ground.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-    add(this.root, new THREE.Mesh(ground, shaded(new THREE.MeshLambertMaterial({ vertexColors: true }))), false)
-
-    // Tufts of grass across the lawn, kept off beds, paving and water.
-    const tuft = new THREE.ConeGeometry(0.035, 0.2, 3)
-    tuft.translate(0, 0.1, 0)
-    const count = 16000
-    const tufts = new THREE.InstancedMesh(tuft, lambert(0xffffff), count)
-    const m = new THREE.Matrix4()
-    const y = T.yard
-    let placed = 0
-    while (placed < count) {
-      const x = y.x0 - 4 + r() * (y.x1 - y.x0 + 8)
-      const z = y.z0 + r() * (y.z1 - y.z0 + 6)
-      const inBed = Math.abs(x) < T.bed.width / 2 + 0.2 && Math.abs(z) < T.bed.depth / 2 + 0.2
-      const inPond = Math.hypot(x - T.pond.x, z - T.pond.z) < T.pond.radius + 0.35
-      const hard = T.hardGround.some((h) => x > h.x0 && x < h.x1 && z > h.z0 && z < h.z1)
-      if (inBed || inPond || hard) continue
-      const s = 0.6 + r() * 0.7
-      m.makeRotationY(r() * 6).scale(new THREE.Vector3(s, s * (0.7 + r() * 0.8), s)).setPosition(x, 0, z)
-      tufts.setMatrixAt(placed, m)
-      tufts.setColorAt(placed, c.setHSL(0.22 + r() * 0.06, 0.45, 0.3 + r() * 0.12))
-      placed++
-    }
-    tufts.castShadow = true
-    this.root.add(tufts)
   }
 
   private boundary() {
@@ -218,7 +184,7 @@ export class World {
     const flag = new THREE.BoxGeometry(0.9, 0.06, 0.9)
     for (let x = p.x0 + 0.5; x < p.x1; x += 0.95) {
       for (let z = p.z0 + 0.5; z < p.z1; z += 0.95) {
-        const s = new THREE.Mesh(flag, lambert(new THREE.Color().setHSL(0.09, 0.12, 0.62 + r2() * 0.1)))
+        const s = new THREE.Mesh(flag, paving(new THREE.Color().setHSL(0.09, 0.12, 0.62 + r2() * 0.1)))
         s.position.set(x, 0.03, z)
         add(this.root, s, false)
       }
@@ -309,7 +275,7 @@ export class World {
         const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.75)
         for (let k = 0; k < n; k++) {
           const t = k / n
-          const s = new THREE.Mesh(stone, lambert(new THREE.Color().setHSL(0.08, 0.08, 0.58 + r() * 0.12)))
+          const s = new THREE.Mesh(stone, paving(new THREE.Color().setHSL(0.08, 0.08, 0.58 + r() * 0.12)))
           s.position.set(x0 + (x1 - x0) * t + (r() - 0.5) * 0.15, 0.03, z0 + (z1 - z0) * t + (r() - 0.5) * 0.15)
           s.scale.set(0.9 + r() * 0.3, 1, 0.8 + r() * 0.3)
           s.rotation.y = r() * 3

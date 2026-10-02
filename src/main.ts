@@ -14,6 +14,7 @@ const toast = document.getElementById('toast')!
 const journal = document.getElementById('journal')!
 const wishList = document.getElementById('wishes')!
 const journalHead = document.getElementById('journal-head')!
+const stormBadge = document.getElementById('storm')!
 
 let toastTimer = 0
 function say(text: string) {
@@ -69,6 +70,13 @@ const garden = new Garden({
   onStrike: () => sound.thunder(),
   onStrikeRefused: (why) => REFUSED[why] && say(REFUSED[why]),
   onRainbow: () => say('A rainbow. The butterflies are coming out.'),
+  onStormReady: () => say('A storm has gathered. Press G to let it go wherever your cloud is.'),
+  onStorm: () => {
+    say('Here it comes. Steer it round the garden.')
+    sound.thunder()
+  },
+  onStormRefused: () => say('The storm is still gathering. Green more of the lawn, or bring something into bloom.'),
+  onStormEnd: () => say('The storm has passed, and the cloud is full again.'),
 })
 const view = new GardenScene(canvas, garden)
 const input = new Input(canvas)
@@ -95,11 +103,15 @@ function frame(now: number) {
 
   const pan = input.panDirection(canvas.getBoundingClientRect())
   if (pan.x || pan.z) view.pan(pan.x * T.camera.panSpeed * dt, pan.z * T.camera.panSpeed * dt)
+  if (input.turn) view.turn(input.turn * T.camera.turnSpeed * dt)
+  const zoom = input.takeZoom()
+  if (zoom !== 1) view.zoomBy(zoom)
 
   const target = input.pointer ? view.groundPointAt(input.pointer.x, input.pointer.y) : null
   // Small steps keep the sim the same at any frame rate.
   const steps = Math.ceil(dt / (1 / 60))
   const strike = input.takeStrike()
+  const storm = input.takeStorm()
   for (let i = 0; i < steps; i++) {
     garden.update(dt / steps, {
       target,
@@ -108,17 +120,24 @@ function frame(now: number) {
       fog: input.fog,
       spread: input.spread,
       strike: strike && i === 0,
+      storm: storm && i === 0,
     })
   }
   if (input.fog && !garden.cloud.fogging) input.fog = false
-  sound.setRaining(garden.cloud.raining)
+  sound.setRaining(garden.cloud.raining || garden.storming)
   sound.setBreeze(garden.cloud.breezing)
   view.render(garden, dt)
+
+  const st = garden.storm
+  stormBadge.className = garden.storming ? 'on' : st.charge >= 1 ? 'ready' : ''
+  stormBadge.style.setProperty('--charge', String(garden.storming ? 1 : st.charge))
+  stormBadge.textContent = garden.storming ? 'Storm' : st.charge >= 1 ? 'Storm ready: G' : 'Storm gathering'
 
   const wild = garden.wildflowers.length
   const night = garden.daylight < 0.5 ? 'Night. ' : ''
   count.textContent =
-    `${night}${garden.bloomed} of ${garden.plants.length} in bloom` + (wild ? `, ${wild} wildflowers` : '')
+    `${night}${garden.bloomed} of ${garden.plants.length} in bloom, lawn ${Math.round(garden.ground.greenShare * 100)}% green` +
+    (wild ? `, ${wild} wildflowers` : '')
 
   // The instructions step aside once the player has rained for a while.
   if (garden.cloud.raining) hintShown += dt

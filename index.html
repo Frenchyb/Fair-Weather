@@ -113,6 +113,35 @@
         transition: opacity 0.25s;
         white-space: nowrap;
       }
+      #storm {
+        left: 16px;
+        bottom: 18px;
+        font-size: 13px;
+        letter-spacing: 0.04em;
+        padding: 6px 12px 9px;
+        min-width: 120px;
+        opacity: 0.8;
+        transition: opacity 0.6s, background 0.6s;
+      }
+      #storm::after {
+        content: '';
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        bottom: 5px;
+        height: 2px;
+        border-radius: 1px;
+        background: linear-gradient(90deg, #6b7c8f calc(var(--charge, 0) * 100%), rgba(47, 58, 44, 0.15) 0);
+      }
+      #storm.ready {
+        opacity: 1;
+        background: rgba(232, 238, 248, 0.9);
+      }
+      #storm.on {
+        opacity: 1;
+        background: rgba(70, 80, 95, 0.85);
+        color: #eef2f6;
+      }
       #toast {
         left: 50%;
         top: 16px;
@@ -208,9 +237,9 @@
     <div id="hint" class="card">
       You are the weather over this garden.<br />
       <b>Move</b> to steer the cloud. <b>Hold the mouse button</b> (or space) to rain.
-      <b>Scroll</b> (or Q and E) to spread it wide or gather it in. Rest it over the
-      pond to fill it up. <b>WASD</b>, the arrow keys or the screen's edge look around
-      the garden. The journal on the right has more to try.
+      <b>X</b> and <b>Z</b> spread it wide or gather it in. Rest it over the pond to
+      fill it up. <b>WASD</b> or the screen's edge look around, <b>Q</b> and <b>E</b>
+      turn the view, and <b>scroll</b> zooms. The journal on the right has more to try.
     </div>
     <div id="count" class="card"></div>
     <div id="journal" class="card">
@@ -219,6 +248,7 @@
     </div>
     <div id="tip" class="card"></div>
     <div id="toast" class="card"></div>
+    <div id="storm" class="card"></div>
     <div id="done" class="card">
       Full bloom. The bees have found your garden.
       <small>Stay as long as you like.</small>

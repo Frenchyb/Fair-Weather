@@ -12,6 +12,8 @@
     "build:artifact": "npm run build && node tools/bundle-artifact.mjs"
   },
   "dependencies": {
+    "n8ao": "^2.0.1",
+    "postprocessing": "^6.39.5",
     "three": "^0.180.0"
   },
   "devDependencies": {
