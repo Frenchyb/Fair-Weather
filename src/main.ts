@@ -11,9 +11,29 @@ const tip = document.getElementById('tip')!
 const done = document.getElementById('done')!
 
 const sound = new Sound()
+const toast = document.getElementById('toast')!
+let toastTimer = 0
+function say(text: string) {
+  toast.textContent = text
+  toast.style.opacity = '1'
+  clearTimeout(toastTimer)
+  toastTimer = window.setTimeout(() => (toast.style.opacity = '0'), 3200)
+}
+
+let blooms = 0
 const garden = new Garden({
-  onBloom: () => sound.bloom(),
-  onFullBloom: () => (done.style.opacity = '1'),
+  onBloom: (p) => {
+    sound.bloom()
+    blooms++
+    const name = T.kinds[p.kind].label.toLowerCase()
+    say(blooms === 1
+      ? `A ${name} is in bloom. Your cloud can hold a little more now. Hold Shift to blow its seed about.`
+      : `A ${name} is in bloom, and your cloud has grown.`)
+  },
+  onFullBloom: () => {
+    done.style.opacity = '1'
+    window.setTimeout(() => (done.style.opacity = '0'), 9000)
+  },
 })
 const view = new GardenScene(canvas, garden)
 const input = new Input(canvas)
@@ -33,15 +53,19 @@ function frame(now: number) {
   const target = input.pointer ? view.groundPointAt(input.pointer.x, input.pointer.y) : null
   // Small steps keep the sim the same at any frame rate.
   const steps = Math.ceil(dt / (1 / 60))
-  for (let i = 0; i < steps; i++) garden.update(dt / steps, { target, rain: input.rain })
+  const controls = { target, rain: input.rain, breeze: input.breeze, spread: input.spread }
+  for (let i = 0; i < steps; i++) garden.update(dt / steps, controls)
   sound.setRaining(garden.cloud.raining)
+  sound.setBreeze(garden.cloud.breezing)
   view.render(garden, dt)
 
-  count.textContent = `${garden.bloomed} of ${garden.plants.length} in bloom`
+  const wild = garden.wildflowers.length
+  count.textContent =
+    `${garden.bloomed} of ${garden.plants.length} in bloom` + (wild ? `, ${wild} wildflowers` : '')
 
   // The instructions step aside once the player has rained for a moment.
   if (garden.cloud.raining) hintShown += dt
-  if (hintShown > 2) hint.style.opacity = '0'
+  if (hintShown > 6) hint.style.opacity = '0'
 
   const plant = view.plantNear(garden, target)
   let text = ''

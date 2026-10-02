@@ -8,6 +8,7 @@ import { T } from '../tuning'
 import { needIcons } from './icons'
 import { PlantView } from './plants'
 import { shaded, shadeUniforms } from './shade'
+import { WindView } from './wind'
 
 const DRY = new THREE.Color(0xa4835e)
 const WET = new THREE.Color(0x4a3524)
@@ -42,6 +43,7 @@ export class GardenScene {
   private mist: THREE.Points
   private mistDots: { t: number; ox: number; oz: number }[] = []
   private bees: THREE.Group[] = []
+  private wind: WindView
   private ray = new THREE.Raycaster()
   private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -T.bed.height)
 
@@ -102,6 +104,8 @@ export class GardenScene {
     this.mist.frustumCulled = false
     for (let i = 0; i < m; i++) this.mistDots.push({ t: i / m, ox: 0, oz: 0 })
     s.add(this.mist)
+
+    this.wind = new WindView(s)
 
     const beeBody = new THREE.SphereGeometry(0.045, 8, 6)
     const beeMat = new THREE.MeshLambertMaterial({ color: 0xe6b422 })
@@ -260,8 +264,8 @@ export class GardenScene {
     ]
     for (const [x, y, z, s] of puffs) {
       const p = new THREE.Mesh(geo, this.cloudMat)
-      p.position.set(x, y, z).multiplyScalar(T.cloud.radius)
-      p.scale.setScalar(s * T.cloud.radius)
+      p.position.set(x, y, z).multiplyScalar(T.cloud.size.reference)
+      p.scale.setScalar(s * T.cloud.size.reference)
       p.userData.base = p.position.clone()
       this.cloud.add(p)
       this.puffs.push(p)
@@ -317,11 +321,14 @@ export class GardenScene {
     const t = garden.time
     const c = garden.cloud
     shadeUniforms.uCloud.value.set(c.x, c.z)
+    shadeUniforms.uRadius.value = garden.radius
+    shadeUniforms.uSoft.value = garden.softEdge
 
-    // Cloud: puffs breathe, the whole thing swells with water and greys when raining.
+    // Cloud: as wide as its shade, puffier the more it holds, grey when raining.
     this.cloud.position.set(c.x, T.cloud.height + Math.sin(t * 0.8) * 0.06, c.z)
-    const full = 0.72 + 0.28 * c.water
-    this.cloud.scale.set(full, 0.8 + 0.2 * c.water, full)
+    const wide = garden.radius / T.cloud.size.reference
+    const fill = c.water / c.capacity
+    this.cloud.scale.set(wide, wide * (0.55 + 0.25 * fill) + 0.2, wide)
     this.puffs.forEach((p, i) => {
       const base = p.userData.base as THREE.Vector3
       p.position.set(base.x, base.y + Math.sin(t * 1.1 + i) * 0.03, base.z)
@@ -336,7 +343,7 @@ export class GardenScene {
 
     garden.plants.forEach((p, i) => {
       const view = this.plants[i]
-      view.update(p, t)
+      view.update(p, t, garden.breezeAt(p.x, p.z), c.windX, c.windZ)
       const m = p.moisture
       const soil = this.soil[i]
       soil.color.copy(DRY).lerp(WET, Math.min(1, m / 0.75))
@@ -352,6 +359,7 @@ export class GardenScene {
       icon.position.set(p.x, view.top + 0.38 + Math.sin(t * 2 + i) * 0.04, p.z)
     })
 
+    this.wind.update(garden, dt)
     this.updateBees(garden)
     this.renderer.render(this.scene, this.camera)
   }
@@ -372,7 +380,7 @@ export class GardenScene {
       if (!d.live && spawn > 0) {
         spawn--
         const a = Math.random() * Math.PI * 2
-        const r = Math.sqrt(Math.random()) * T.cloud.radius
+        const r = Math.sqrt(Math.random()) * garden.radius
         d.x = c.x + Math.cos(a) * r
         d.z = c.z + Math.sin(a) * r
         d.y = T.cloud.height - 0.3 - Math.random() * 0.4

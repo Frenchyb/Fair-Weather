@@ -18,8 +18,18 @@ three.js, Vite, vitest. Concept and plan: `/mnt/project-files/weather-game/conce
 - The cloud's shade is painted by `render/shade.ts` from the same radius and soft
   edge the sim uses for light, not by a shadow map, so what you see is exactly
   what the plants feel. The cloud itself casts no shadow.
-- One cloud should water one plant. Plants sit 1.1 m apart; with a 0.9 m radius
-  and 0.5 m soft edge a neighbour gets almost nothing. A test covers this.
+- At its default spread one cloud waters one plant (plants sit 1.1 m apart). The
+  player can spread it wide (scroll, Q/E) to water several gently: rain per area
+  falls with the square of the radius, so wide is never a free win. Each bloom
+  raises `capacity`, which is what lets it spread wider. Tests cover all of this.
+- **Calm over busy (Rick, 2026-10-02):** v1 felt stressful, "bouncing around
+  trying to keep all the plants happy". A good soak should last well over a
+  minute, and lettuce manages in full sun (shade is a bonus). A test asserts a
+  soaked tomato is still content after 75 s. Don't tighten these without asking.
+- The breeze (Shift or right button) blows the way the cloud is moving. It
+  pollinates open flowers (a growth bonus, never required) and carries seed
+  from bloomed plants into the lawn, where wildflowers grow by themselves.
+  Seed scatter uses the garden's own seeded random, so tests are repeatable.
 - The pointer is projected onto the bed's top (`y = T.bed.height`) using the
   canvas's own `getBoundingClientRect()`. Check in Playwright at
   `deviceScaleFactor: 2`; the AC-130 game lost three rounds to a Retina bug.
@@ -27,5 +37,7 @@ three.js, Vite, vitest. Concept and plan: `/mnt/project-files/weather-game/conce
   wait on `garden.time`, not wall time. `window.fairWeather` exposes the garden.
 - `tools/bundle-artifact.mjs` builds the published single page from `index.html`
   and refuses non-ASCII. Plant icons are drawn on canvas for that reason.
+- `pkill -f "vite preview"` from a shell whose own command line contains that
+  text kills the shell. Start previews on a fresh port instead.
 - The test gardener in `test/garden.test.ts` is a crude bot; if it can reach full
   bloom under 300 s, a person can. Re-run it after turning any growth dial.

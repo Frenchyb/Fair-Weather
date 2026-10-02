@@ -10,7 +10,7 @@ import { T } from '../tuning'
 
 export const shadeUniforms = {
   uCloud: { value: new THREE.Vector2() },
-  uRadius: { value: T.cloud.radius },
+  uRadius: { value: T.cloud.size.reference },
   uSoft: { value: T.cloud.softEdge },
   uDark: { value: T.render.shadeDarkness },
 }

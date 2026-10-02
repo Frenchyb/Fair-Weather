@@ -58,12 +58,15 @@ export class PlantView {
     return this.root.position.y + this.body.scale.y * { tomato: 1.15, lettuce: 0.4, lavender: 0.85 }[this.kind]
   }
 
-  update(p: Plant, time: number) {
+  /** `breeze` is 0 to 1 at this plant; the wind blows along (windX, windZ). */
+  update(p: Plant, time: number, breeze = 0, windX = 1, windZ = 0) {
     const size = p.growth < T.stages.sprout ? 0.12 * ease(p.growth / T.stages.sprout) : 0.12 + 0.88 * ease(p.growth)
     const droop = 1 - p.mood
     this.body.scale.set(size, size * (1 - droop * 0.3), size)
-    this.body.rotation.x = droop * 0.25
-    this.body.rotation.z = Math.sin(time * 1.3 + this.phase) * 0.035 * (1 - droop)
+    // Lean downwind in a breeze, flutter a little, and droop when unhappy.
+    const gust = breeze * (0.22 + Math.sin(time * 7 + this.phase) * 0.06)
+    this.body.rotation.x = droop * 0.25 + gust * windZ
+    this.body.rotation.z = Math.sin(time * 1.3 + this.phase) * 0.035 * (1 - droop) - gust * windX
     this.leaf.color.copy(this.healthy).lerp(TIRED, droop * 0.75)
     this.seed.visible = p.growth < T.stages.leafy
 

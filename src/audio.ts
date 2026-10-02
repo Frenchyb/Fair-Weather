@@ -1,5 +1,5 @@
 /**
- * Rain on leaves, and a soft chime when a plant comes into bloom.
+ * Rain on leaves, a breeze, and a soft chime when a plant comes into bloom.
  * Browsers only allow sound after a click or key press, so `start()` is
  * called from the first one.
  */
@@ -8,6 +8,7 @@ import { T } from './tuning'
 export class Sound {
   private ctx?: AudioContext
   private rain?: GainNode
+  private wind?: GainNode
 
   start() {
     if (this.ctx) return
@@ -33,6 +34,25 @@ export class Sound {
     this.rain.gain.value = 0
     src.connect(low).connect(high).connect(this.rain).connect(ctx.destination)
     src.start()
+
+    // The same noise, much darker, is the breeze.
+    const windSrc = ctx.createBufferSource()
+    windSrc.buffer = buf
+    windSrc.loop = true
+    windSrc.playbackRate.value = 0.7
+    const windLow = ctx.createBiquadFilter()
+    windLow.type = 'lowpass'
+    windLow.frequency.value = 520
+    windLow.Q.value = 0.6
+    this.wind = ctx.createGain()
+    this.wind.gain.value = 0
+    windSrc.connect(windLow).connect(this.wind).connect(ctx.destination)
+    windSrc.start()
+  }
+
+  setBreeze(on: boolean) {
+    if (!this.ctx || !this.wind) return
+    this.wind.gain.setTargetAtTime(on ? T.audio.windGain : 0, this.ctx.currentTime, T.audio.rainFade / 3)
   }
 
   setRaining(on: boolean) {
