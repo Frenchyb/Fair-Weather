@@ -121,9 +121,9 @@ export class Effects {
     for (const m of this.rainbowMats) m.opacity = o
     // Stand it up far off in the sky beyond the shower, square on to the viewer.
     const away = new THREE.Vector3(r.x - camera.position.x, 0, r.z - camera.position.z).normalize()
-    this.rainbow.position.set(r.x + away.x * 60, -6, r.z + away.z * 60)
+    this.rainbow.position.set(r.x + away.x * 22, -6, r.z + away.z * 22)
     this.rainbow.rotation.y = Math.atan2(away.x, away.z)
-    this.rainbow.scale.setScalar(3.2)
+    this.rainbow.scale.setScalar(1.8)
   }
 
   private updateBolt(garden: Garden, dt: number) {
