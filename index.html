@@ -55,6 +55,56 @@
         right: 16px;
         top: 16px;
       }
+      #journal {
+        right: 16px;
+        top: 62px;
+        width: 290px;
+        pointer-events: auto;
+        font-size: 14px;
+      }
+      #journal-head {
+        cursor: pointer;
+        font-style: italic;
+      }
+      #journal-head span {
+        opacity: 0.55;
+        font-size: 12px;
+      }
+      #journal ul {
+        list-style: none;
+        margin: 6px 0 0;
+        padding: 0;
+        display: grid;
+        gap: 4px;
+      }
+      #journal li {
+        padding-left: 20px;
+        position: relative;
+        opacity: 0.9;
+      }
+      #journal li::before {
+        content: '';
+        position: absolute;
+        left: 2px;
+        top: 4px;
+        width: 10px;
+        height: 10px;
+        border: 1.5px solid var(--ink);
+        border-radius: 50%;
+        opacity: 0.6;
+      }
+      #journal li.done {
+        opacity: 0.5;
+        text-decoration: line-through;
+      }
+      #journal li.done::before {
+        background: #5d8f3c;
+        border-color: #5d8f3c;
+        opacity: 1;
+      }
+      #journal.closed ul {
+        display: none;
+      }
       #tip {
         left: 50%;
         bottom: 18px;
@@ -95,7 +145,57 @@
         #hint {
           max-width: 200px;
         }
-        #tip {
+        #journal {
+        right: 16px;
+        top: 62px;
+        width: 290px;
+        pointer-events: auto;
+        font-size: 14px;
+      }
+      #journal-head {
+        cursor: pointer;
+        font-style: italic;
+      }
+      #journal-head span {
+        opacity: 0.55;
+        font-size: 12px;
+      }
+      #journal ul {
+        list-style: none;
+        margin: 6px 0 0;
+        padding: 0;
+        display: grid;
+        gap: 4px;
+      }
+      #journal li {
+        padding-left: 20px;
+        position: relative;
+        opacity: 0.9;
+      }
+      #journal li::before {
+        content: '';
+        position: absolute;
+        left: 2px;
+        top: 4px;
+        width: 10px;
+        height: 10px;
+        border: 1.5px solid var(--ink);
+        border-radius: 50%;
+        opacity: 0.6;
+      }
+      #journal li.done {
+        opacity: 0.5;
+        text-decoration: line-through;
+      }
+      #journal li.done::before {
+        background: #5d8f3c;
+        border-color: #5d8f3c;
+        opacity: 1;
+      }
+      #journal.closed ul {
+        display: none;
+      }
+      #tip {
           white-space: normal;
           width: calc(100vw - 64px);
           text-align: center;
@@ -108,10 +208,15 @@
     <div id="hint" class="card">
       You are the weather over this garden.<br />
       <b>Move</b> to steer the cloud. <b>Hold the mouse button</b> (or space) to rain.
-      <b>Scroll</b> (or Q and E) to spread the cloud wide or gather it in.
-      Rest it over the pond to fill it up.
+      <b>Scroll</b> (or Q and E) to spread it wide or gather it in. Rest it over the
+      pond to fill it up. <b>WASD</b>, the arrow keys or the screen's edge look around
+      the garden. The journal on the right has more to try.
     </div>
     <div id="count" class="card"></div>
+    <div id="journal" class="card">
+      <div id="journal-head">Journal <span>(J)</span></div>
+      <ul id="wishes"></ul>
+    </div>
     <div id="tip" class="card"></div>
     <div id="toast" class="card"></div>
     <div id="done" class="card">

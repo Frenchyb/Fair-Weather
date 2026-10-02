@@ -1,6 +1,7 @@
 # Fair Weather — notes for Claude
 
-A cozy garden game: you are the weather over a raised bed. Browser, TypeScript,
+A cozy garden game: you are the weather over a back garden (house, raised bed,
+orchard, oak, pond). Browser, TypeScript,
 three.js, Vite, vitest. Concept and plan: `/mnt/project-files/weather-game/concept-and-plan.md`
 (in the Game Design project). This code started in `frenchyb/ac130_game/fair-weather/`.
 
@@ -37,6 +38,17 @@ three.js, Vite, vitest. Concept and plan: `/mnt/project-files/weather-game/conce
   wait on `garden.time`, not wall time. `window.fairWeather` exposes the garden.
 - `tools/bundle-artifact.mjs` builds the published single page from `index.html`
   and refuses non-ASCII. Plant icons are drawn on canvas for that reason.
+- **Night must not read as shade.** Plants only update their remembered light
+  while it is day, and ask for nothing while asleep; otherwise every plant
+  would cry "wants sun" at dusk. Moonflowers are the reverse.
+- The oak's shade in the sim is `shadowOf(oak, crownHeight, time)` from
+  `sim/sky.ts`, the same sun the renderer lights with, so the shadow you see
+  under the oak is the shade the ferns get. If you move the sun, move it there.
+- Over the bed the pointer is projected onto the bed's top; elsewhere onto the
+  lawn (`GardenScene.groundPointAt`). Panning moves the camera's `focus`, never
+  the cloud: the cloud only ever follows the ground point under the pointer.
+- The journal (`sim/journal.ts`) doubles as the instructions: each entry says
+  how to do the thing. New mechanics should arrive with an entry.
 - `pkill -f "vite preview"` from a shell whose own command line contains that
   text kills the shell. Start previews on a fresh port instead.
 - The test gardener in `test/garden.test.ts` is a crude bot; if it can reach full

@@ -28,7 +28,7 @@ export class WindView {
   private wisps: THREE.LineSegments
   private wispState: { x: number; z: number; y: number; age: number; life: number }[] = []
   private seeds = points(T.wind.maxSeedsInAir, 0xfdfbf2, 0.09)
-  private pollen = points(9 * 12, 0xf6d55c, 0.06)
+  private pollen: THREE.Points
   private stems: THREE.InstancedMesh
   private heads: THREE.InstancedMesh
   private m = new THREE.Matrix4()
@@ -37,7 +37,8 @@ export class WindView {
   private s = new THREE.Vector3()
   private c = new THREE.Color()
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, plants: number) {
+    this.pollen = points(plants * 12, 0xf6d55c, 0.06)
     const n = T.render.windWisps
     this.wisps = new THREE.LineSegments(
       new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 6), 3)),
@@ -134,7 +135,7 @@ export class WindView {
         pos.setXYZ(
           k,
           p.x + Math.cos(a) * r + garden.cloud.windX * drift,
-          T.bed.height + 0.5 + Math.sin(a * 1.7) * 0.2,
+          (p.inBed ? T.bed.height : 0) + 0.5 + Math.sin(a * 1.7) * 0.2,
           p.z + Math.sin(a) * r + garden.cloud.windZ * drift,
         )
       }

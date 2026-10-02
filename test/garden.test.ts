@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { Garden, comfortIn, stageOf, type Controls, type Plant } from '../src/sim/garden'
+import { Garden, comfortIn, onBed, stageOf, type Controls, type Plant } from '../src/sim/garden'
+import { WISHES } from '../src/sim/journal'
+import { daylight, shadowOf } from '../src/sim/sky'
 import { T } from '../src/tuning'
 
 const DT = 1 / 30
+const CYCLE = T.day.length + T.day.night
 
 function run(g: Garden, seconds: number, controls: Controls | ((g: Garden) => Controls)) {
   for (let t = 0; t < seconds; t += DT) {
@@ -16,6 +19,9 @@ function parkOver(g: Garden, x: number, z: number) {
 }
 
 const idle: Controls = { target: null, rain: false }
+const kind = (g: Garden, k: Plant['kind']) => g.plants.find((p) => p.kind === k)!
+/** Bed plant in the middle row, second column: all four neighbours are in the bed. */
+const middle = (g: Garden) => g.plants[5]
 
 describe('weather', () => {
   it('rain wets only the soil under the cloud', () => {
@@ -29,11 +35,11 @@ describe('weather', () => {
 
   it('one cloud waters one plant, not its neighbours', () => {
     const g = new Garden()
-    const middle = g.plants[4]
-    parkOver(g, middle.x, middle.z)
-    run(g, 2, { target: { x: middle.x, z: middle.z }, rain: true })
+    const m = middle(g)
+    parkOver(g, m.x, m.z)
+    run(g, 2, { target: { x: m.x, z: m.z }, rain: true })
     for (const p of g.plants) {
-      if (p !== middle) expect(p.moisture).toBeLessThan(T.soil.start + 0.03)
+      if (p !== m) expect(p.moisture).toBeLessThan(T.soil.start + 0.03)
     }
   })
 
@@ -71,11 +77,11 @@ describe('weather', () => {
     expect(pond.cloud.water).toBeGreaterThan(field.cloud.water * 5)
   })
 
-  it('follows the pointer and stays in the yard', () => {
+  it('follows the pointer and stays inside the fence', () => {
     const g = new Garden()
-    run(g, 5, { target: { x: 100, z: -100 }, rain: false })
-    expect(g.cloud.x).toBeCloseTo(T.yard.halfWidth, 1)
-    expect(g.cloud.z).toBeCloseTo(-T.yard.halfDepth, 1)
+    run(g, 6, { target: { x: 100, z: -100 }, rain: false })
+    expect(g.cloud.x).toBeCloseTo(T.yard.x1, 1)
+    expect(g.cloud.z).toBeCloseTo(T.yard.z0, 1)
   })
 })
 
@@ -91,19 +97,18 @@ describe('plants', () => {
     for (const g of [shaded, sunny]) {
       for (const p of g.plants) p.moisture = 0.7
     }
-    const lettuce = (g: Garden) => g.plants.find((p) => p.kind === 'lettuce')!
-    const l = lettuce(shaded)
+    const l = kind(shaded, 'lettuce')
     parkOver(shaded, l.x, l.z)
     parkOver(sunny, T.pond.x, T.pond.z)
     run(shaded, 30, { target: { x: l.x, z: l.z }, rain: false })
     run(sunny, 30, idle)
-    expect(lettuce(shaded).growth).toBeGreaterThan(lettuce(sunny).growth * 1.4)
-    expect(lettuce(sunny).need).toBe(null)
+    expect(kind(shaded, 'lettuce').growth).toBeGreaterThan(kind(sunny, 'lettuce').growth * 1.4)
+    expect(kind(sunny, 'lettuce').need).toBe(null)
   })
 
   it('a good soak keeps a tomato content for over a minute', () => {
     const g = new Garden()
-    const tom = g.plants.find((p) => p.kind === 'tomato')!
+    const tom = kind(g, 'tomato')
     tom.moisture = 0.8
     run(g, 75, idle)
     expect(tom.need).toBe(null)
@@ -112,7 +117,7 @@ describe('plants', () => {
 
   it('lavender sulks when soaked, and says so', () => {
     const g = new Garden()
-    const lav = g.plants.find((p) => p.kind === 'lavender')!
+    const lav = kind(g, 'lavender')
     lav.moisture = 0.95
     g.update(DT, idle)
     expect(lav.need).toBe('soggy')
@@ -121,7 +126,7 @@ describe('plants', () => {
 
   it('a thirsty tomato asks for water', () => {
     const g = new Garden()
-    const tom = g.plants.find((p) => p.kind === 'tomato')!
+    const tom = kind(g, 'tomato')
     tom.moisture = 0.1
     g.update(DT, idle)
     expect(tom.need).toBe('thirsty')
@@ -145,56 +150,72 @@ describe('plants', () => {
     expect(stageOf(0.8)).toBe('flowering')
     expect(stageOf(1)).toBe('bloom')
   })
-})
 
-describe('a whole summer', () => {
-  /**
-   * A simple-minded player: go to whichever unfinished plant is least happy and
-   * give it what it asks for, topping the cloud up at the pond when it runs low.
-   * If this can reach full bloom, a person can, comfortably.
-   */
-  function gardener() {
-    let topping = false
-    let tending: Plant | null = null
-    return (g: Garden): Controls => {
-      const c = g.cloud
-      if (c.water < 0.08) topping = true
-      if (topping && c.water > 0.9) topping = false
-      if (topping) return { target: { x: T.pond.x, z: T.pond.z }, rain: false }
-      const wanting = (p: Plant) =>
-        p.growth < 1 && (p.need === 'thirsty' || p.need === 'wants-shade')
-      if (!tending || !wanting(tending)) {
-        tending = g.plants.filter(wanting).sort((a, b) => a.comfort - b.comfort)[0] ?? null
-      }
-      if (!tending) return { target: { x: T.pond.x, z: T.pond.z }, rain: false }
-      const here = Math.hypot(c.x - tending.x, c.z - tending.z) < 0.3
-      const kind = T.kinds[tending.kind]
-      return {
-        target: { x: tending.x, z: tending.z },
-        rain: here && tending.moisture < (kind.moisture[0] + kind.moisture[1]) / 2,
-      }
-    }
-  }
-
-  it('can be brought to full bloom in a few minutes', () => {
-    let blooms = 0
-    let full = false
-    const g = new Garden({ onBloom: () => blooms++, onFullBloom: () => (full = true) })
-    const play = gardener()
-    let t = 0
-    while (!g.fullBloom && t < 600) {
-      g.update(DT, play(g))
-      t += DT
-    }
-    expect(full).toBe(true)
-    expect(blooms).toBe(9)
-    expect(t).toBeLessThan(300)
+  it('ferns are content in the shade of the oak without any help', () => {
+    const g = new Garden()
+    for (const p of g.plants) p.moisture = 0.7
+    run(g, 60, idle)
+    for (const f of g.plants.filter((p) => p.kind === 'fern')) expect(f.comfort).toBeGreaterThan(0.6)
   })
 
-  it('left alone, the garden gets nowhere near full bloom', () => {
+  it('an apple blossom barely moves without a breeze, and sets fruit with one', () => {
+    const still = new Garden()
+    const breezy = new Garden()
+    for (const g of [still, breezy]) {
+      const a = kind(g, 'apple')
+      a.growth = T.stages.flowering
+      a.moisture = 0.6
+      parkOver(g, a.x - 1.5, a.z)
+    }
+    const a = kind(still, 'apple')
+    const at = { x: a.x - 1.5, z: a.z }
+    run(still, 10, { target: at, rain: false })
+    run(breezy, 10, { target: at, rain: false, breeze: true })
+    const gain = (g: Garden) => kind(g, 'apple').growth - T.stages.flowering
+    expect(gain(breezy)).toBeGreaterThan(10 * gain(still))
+    expect(gain(still)).toBeGreaterThan(0)
+  })
+})
+
+describe('day and night', () => {
+  it('the day starts bright, and a night follows', () => {
+    expect(daylight(0)).toBeGreaterThan(0.9)
+    const nightAt = T.day.length * (1 - T.day.start) + T.day.night / 2
+    expect(daylight(nightAt)).toBe(0)
+    expect(daylight(nightAt + CYCLE)).toBe(0)
+  })
+
+  it('shadows fall away from the viewer at midday', () => {
+    const noon = T.day.length * (0.5 - T.day.start)
+    const s = shadowOf(0, 0, 4, noon)
+    expect(s.z).toBeLessThan(-1)
+    expect(Math.abs(s.x)).toBeLessThan(0.1)
+  })
+
+  it('plants rest at night, and moonflowers grow only then', () => {
     const g = new Garden()
-    run(g, 300, idle)
-    expect(g.bloomed).toBeLessThan(6)
+    for (const p of g.plants) p.moisture = 0.6
+    const nightAt = T.day.length * (1 - T.day.start) + 5
+    run(g, nightAt, idle)
+    for (const p of g.plants) p.moisture = 0.6
+    const tom = kind(g, 'tomato').growth
+    const moon = kind(g, 'moonflower').growth
+    expect(moon).toBeLessThan(0.06)
+    run(g, 30, idle)
+    expect(kind(g, 'tomato').growth).toBeCloseTo(tom, 3)
+    expect(kind(g, 'moonflower').growth).toBeGreaterThan(moon + 0.2)
+    expect(g.plants.every((p) => p.kind === 'moonflower' || p.need === null)).toBe(true)
+  })
+
+  it('dew at dawn lifts dry soil, but never past what a plant likes', () => {
+    const g = new Garden()
+    const dawnAt = T.day.length * (1 - T.day.start) + T.day.night
+    run(g, dawnAt - 5, idle)
+    for (const p of g.plants) p.moisture = 0.05
+    kind(g, 'lavender').moisture = 0.44
+    run(g, 5 + T.day.twilight, idle)
+    expect(kind(g, 'tomato').moisture).toBeGreaterThan(0.12)
+    expect(kind(g, 'lavender').moisture).toBeLessThanOrEqual(T.kinds.lavender.moisture[1])
   })
 })
 
@@ -202,17 +223,17 @@ describe('the cloud', () => {
   it('spread wide, it waters several plants gently; gathered, just one', () => {
     const wide = new Garden()
     const tight = new Garden()
-    const mid = (g: Garden) => g.plants[4]
     for (const [g, spread] of [[wide, 1], [tight, 0]] as const) {
       g.cloud.capacity = g.cloud.water = T.cloud.maxCapacity
       g.cloud.spread = spread
-      parkOver(g, mid(g).x, mid(g).z)
-      run(g, 2, { target: { x: mid(g).x, z: mid(g).z }, rain: true, spread })
+      const m = middle(g)
+      parkOver(g, m.x, m.z)
+      run(g, 2, { target: { x: m.x, z: m.z }, rain: true, spread })
     }
     const wetted = (g: Garden) => g.plants.filter((p) => p.moisture > T.soil.start + 0.02).length
     expect(wetted(wide)).toBeGreaterThanOrEqual(5)
     expect(wetted(tight)).toBe(1)
-    expect(mid(tight).moisture).toBeGreaterThan(mid(wide).moisture)
+    expect(middle(tight).moisture).toBeGreaterThan(middle(wide).moisture)
   })
 
   it('grows each time a plant blooms, and can then spread wider', () => {
@@ -220,7 +241,8 @@ describe('the cloud', () => {
     g.cloud.spread = 1
     const before = g.radius
     for (const p of g.plants.slice(0, 3)) p.growth = 0.9999
-    g.update(DT, idle)
+    for (const p of g.plants.slice(0, 3)) p.moisture = 0.6
+    run(g, 1, idle)
     expect(g.cloud.capacity).toBeCloseTo(1 + 3 * T.cloud.capacityPerBloom)
     g.cloud.water = g.cloud.capacity
     expect(g.radius).toBeGreaterThan(before * 1.2)
@@ -233,6 +255,62 @@ describe('the cloud', () => {
     run(g, 4, { target: { x: T.pond.x, z: T.pond.z }, rain: false })
     expect(g.radius).toBeGreaterThan(thin)
   })
+
+  it('fog damps soil gently, never soaks it, and cannot rain', () => {
+    const g = new Garden()
+    const f = kind(g, 'fern')
+    f.moisture = 0.2
+    parkOver(g, f.x, f.z)
+    run(g, 60, { target: { x: f.x, z: f.z }, rain: true, fog: true })
+    expect(g.cloud.raining).toBe(false)
+    expect(f.moisture).toBeGreaterThan(0.45)
+    expect(f.moisture).toBeLessThanOrEqual(T.fog.target + 1e-9)
+    expect(g.journal.has('fog')).toBe(true)
+  })
+})
+
+describe('lightning', () => {
+  it('needs a full, tight cloud, and says why not', () => {
+    const refusals: string[] = []
+    const g = new Garden({ onStrikeRefused: (why) => refusals.push(why) })
+    g.cloud.water = 0.2
+    g.update(DT, { ...idle, strike: true })
+    g.cloud.water = 1
+    g.cloud.spread = 1
+    g.update(DT, { ...idle, strike: true })
+    expect(refusals).toEqual(['too-little-water', 'too-spread'])
+    expect(g.strike).toBe(null)
+  })
+
+  it('enriches the soil it hits, and nowhere else', () => {
+    const g = new Garden()
+    for (const p of g.plants) p.moisture = 0.6
+    const m = middle(g)
+    parkOver(g, m.x, m.z)
+    g.cloud.water = 1
+    g.cloud.spread = 0
+    g.update(DT, { target: { x: m.x, z: m.z }, rain: false, strike: true, spread: 0 })
+    expect(g.strike).not.toBe(null)
+    expect(m.rich).toBeGreaterThan(0.99)
+    expect(g.journal.has('lightning')).toBe(true)
+    expect(g.plants[0].rich).toBe(0)
+  })
+})
+
+describe('rainbows', () => {
+  it('a long shower in sunshine leaves one behind; a short one does not', () => {
+    const g = new Garden()
+    const at = { x: 0, z: 0 }
+    parkOver(g, 0, 0)
+    run(g, 1, { target: at, rain: true })
+    run(g, 0.5, { target: at, rain: false })
+    expect(g.rainbow).toBe(null)
+    run(g, T.rainbow.minShower + 0.5, { target: at, rain: true })
+    run(g, 0.5, { target: at, rain: false })
+    expect(g.rainbow).not.toBe(null)
+    run(g, T.rainbow.lasts + 1, idle)
+    expect(g.rainbow).toBe(null)
+  })
 })
 
 describe('the breeze', () => {
@@ -242,17 +320,17 @@ describe('the breeze', () => {
     return g
   }
 
-  it('carries seed from bloomed plants out into the grass', () => {
+  it('carries seed from bloomed plants out into the lawn, never onto hard ground', () => {
     const g = bloomedGarden()
-    // Sweep slowly left to right along the front of the bed, breeze on.
-    for (let t = 0; t < 8; t += DT) {
-      g.update(DT, { target: { x: -3 + t * 0.8, z: 1.1 }, rain: false, breeze: true })
+    for (let t = 0; t < 10; t += DT) {
+      g.update(DT, { target: { x: -4 + t * 0.9, z: 1.1 }, rain: false, breeze: true })
     }
     run(g, 4, idle)
     expect(g.wildflowers.length).toBeGreaterThan(5)
     for (const f of g.wildflowers) {
-      expect(Math.abs(f.x) < T.bed.width / 2 && Math.abs(f.z) < T.bed.depth / 2).toBe(false)
+      expect(onBed(f.x, f.z)).toBe(false)
       expect(Math.hypot(f.x - T.pond.x, f.z - T.pond.z)).toBeGreaterThan(T.pond.radius)
+      expect(g.unplantable(f.x, f.z)).toBe(false)
     }
   })
 
@@ -284,10 +362,78 @@ describe('the breeze', () => {
   it('wildflowers grow up on their own', () => {
     const g = bloomedGarden()
     for (let t = 0; t < 6; t += DT) {
-      g.update(DT, { target: { x: -3 + t, z: 1.1 }, rain: false, breeze: true })
+      g.update(DT, { target: { x: -4 + t, z: 1.1 }, rain: false, breeze: true })
     }
     run(g, T.wild.secondsToGrow + 5, idle)
     expect(g.wildflowers.length).toBeGreaterThan(0)
     expect(g.wildflowers.every((f) => f.growth === 1)).toBe(true)
+  })
+})
+
+describe('a whole garden', () => {
+  /**
+   * A simple-minded player: go to whichever unfinished plant is least happy and
+   * give it what it asks for, breeze any blossom that needs it, water the
+   * moonflowers at night, and top the cloud up at the pond when it runs low.
+   * If this can bring everything into bloom, a person can, comfortably.
+   */
+  function gardener() {
+    let topping = false
+    let tending: Plant | null = null
+    return (g: Garden): Controls => {
+      const c = g.cloud
+      const pond = { target: { x: T.pond.x, z: T.pond.z }, rain: false }
+      if (c.water < 0.08) topping = true
+      if (topping && c.water > Math.min(0.9, c.capacity - 0.05)) topping = false
+      if (topping) return pond
+      const wanting = (p: Plant) => {
+        if (p.growth >= 1) return false
+        const k = T.kinds[p.kind]
+        if (k.pollen && p.growth >= T.stages.flowering) return true
+        if (k.night && g.daylight < 0.5 && p.moisture < k.moisture[0] + 0.05) return true
+        return p.need === 'thirsty' || p.need === 'wants-shade'
+      }
+      if (!tending || !wanting(tending)) {
+        tending = g.plants.filter(wanting).sort((a, b) => a.comfort - b.comfort)[0] ?? null
+      }
+      if (!tending) return pond
+      const k = T.kinds[tending.kind]
+      const here = Math.hypot(c.x - tending.x, c.z - tending.z) < 0.3
+      if (k.pollen && tending.growth >= T.stages.flowering) {
+        // Sweep back and forth beside the blossom with the breeze on.
+        const sway = Math.sin(g.time * 2) * 1.5
+        return { target: { x: tending.x + sway, z: tending.z }, rain: false, breeze: true }
+      }
+      return {
+        target: { x: tending.x, z: tending.z },
+        rain: here && tending.moisture < (k.moisture[0] + k.moisture[1]) / 2,
+      }
+    }
+  }
+
+  it('can be brought to full bloom within a few days', () => {
+    let blooms = 0
+    let full = false
+    const g = new Garden({ onBloom: () => blooms++, onFullBloom: () => (full = true) })
+    const play = gardener()
+    let t = 0
+    while (!g.fullBloom && t < 6 * CYCLE) {
+      g.update(DT, play(g))
+      t += DT
+    }
+    expect(full).toBe(true)
+    expect(blooms).toBe(g.plants.length)
+    expect(t).toBeLessThan(4 * CYCLE)
+  })
+
+  it('left alone, the garden gets nowhere near full bloom', () => {
+    const g = new Garden()
+    run(g, CYCLE, idle)
+    expect(g.bloomed).toBeLessThan(g.plants.length / 2)
+  })
+
+  it('every journal entry has its own id', () => {
+    const ids = new Set(WISHES.map((w) => w.id))
+    expect(ids.size).toBe(WISHES.length)
   })
 })

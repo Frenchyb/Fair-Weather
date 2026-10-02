@@ -1,51 +1,56 @@
 /**
- * The yard: grass, a raised bed, a pond, a fence and a few trees, the cloud,
- * its rain and its shade. Reads the garden every frame and never writes to it.
+ * The garden on screen: the scenery, the raised bed and every plant, the cloud,
+ * its rain, fog and shade, the sky from morning to night, and a camera that
+ * pans around the yard. Reads the garden every frame and never writes to it.
  */
 import * as THREE from 'three'
-import type { Garden } from '../sim/garden'
+import { onBed, type Garden, type Plant } from '../sim/garden'
+import { sunDirection } from '../sim/sky'
 import { T } from '../tuning'
+import { Effects } from './effects'
 import { needIcons } from './icons'
 import { PlantView } from './plants'
-import { shaded, shadeUniforms } from './shade'
+import { shadeUniforms } from './shade'
 import { WindView } from './wind'
+import { World, lambert } from './world'
 
 const DRY = new THREE.Color(0xa4835e)
 const WET = new THREE.Color(0x4a3524)
 const SOAKED = new THREE.Color(0x3a3a40)
+const MULCH_DRY = new THREE.Color(0x8a6a48)
 
-/** Deterministic scatter, so the yard looks the same every visit. */
-function rng(seed: number) {
-  return () => {
-    seed = (seed * 16807) % 2147483647
-    return seed / 2147483647
-  }
-}
-
-function lambert(color: number) {
-  return shaded(new THREE.MeshLambertMaterial({ color }))
-}
+const SKY_DAY = new THREE.Color(0xbcdcf0)
+const SKY_DUSK = new THREE.Color(0xe9a87c)
+const SKY_NIGHT = new THREE.Color(0x141c33)
 
 export class GardenScene {
   readonly renderer: THREE.WebGLRenderer
-  readonly camera = new THREE.PerspectiveCamera(38, 1, 0.1, 200)
+  readonly camera = new THREE.PerspectiveCamera(38, 1, 0.1, 300)
+  /** The point on the ground the camera looks at. Panning moves it. */
+  readonly focus = new THREE.Vector2(T.camera.startX, T.camera.startZ)
   private scene = new THREE.Scene()
-  private bedTop = T.bed.height
+  private world = new World()
+  private hemi = new THREE.HemisphereLight(0xe4f2ff, 0x5d7a3e, 1.5)
+  private sun = new THREE.DirectionalLight(0xfff0d0, 2.4)
+  private moon = new THREE.DirectionalLight(0x8fa8ff, 0)
+  private sky = new THREE.Color()
   private plants: PlantView[] = []
   private soil: THREE.MeshLambertMaterial[] = []
   private icons: THREE.Sprite[] = []
   private iconTex = needIcons()
   private cloud = new THREE.Group()
-  private cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x9aa6b0 })
+  private cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x9aa6b0, transparent: true })
   private puffs: THREE.Mesh[] = []
+  private cloudY: number = T.cloud.height
   private rain: THREE.LineSegments
   private drops: { x: number; y: number; z: number; live: boolean }[] = []
   private mist: THREE.Points
   private mistDots: { t: number; ox: number; oz: number }[] = []
   private bees: THREE.Group[] = []
   private wind: WindView
+  private effects: Effects
   private ray = new THREE.Raycaster()
-  private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -T.bed.height)
+  private dist = 20
 
   constructor(private canvas: HTMLCanvasElement, garden: Garden) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
@@ -56,30 +61,37 @@ export class GardenScene {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
 
     const s = this.scene
-    s.background = new THREE.Color(0xbcdcf0)
-    s.fog = new THREE.Fog(0xc9e2ef, 22, 55)
-    s.add(new THREE.HemisphereLight(0xe4f2ff, 0x5d7a3e, 1.5))
-    const sun = new THREE.DirectionalLight(0xfff0d0, 2.4)
-    sun.position.set(5, 12, 6)
-    sun.castShadow = true
-    sun.shadow.mapSize.set(2048, 2048)
-    Object.assign(sun.shadow.camera, { left: -11, right: 11, top: 9, bottom: -9 })
-    sun.shadow.bias = -0.0005
-    sun.shadow.normalBias = 0.02
-    s.add(sun)
+    s.background = this.sky
+    s.fog = new THREE.Fog(0xc9e2ef, 30, 75)
+    s.add(this.hemi, this.sun, this.sun.target, this.moon, this.moon.target)
+    this.sun.castShadow = true
+    this.sun.shadow.mapSize.set(2048, 2048)
+    Object.assign(this.sun.shadow.camera, { left: -20, right: 20, top: 16, bottom: -16, far: 80 })
+    this.sun.shadow.bias = -0.0005
+    this.sun.shadow.normalBias = 0.03
+    s.add(this.world.root)
 
-    this.buildYard()
     this.buildBed()
-    this.buildPond()
     this.buildCloud()
 
     for (const p of garden.plants) {
       const view = new PlantView(p.kind)
-      view.root.position.set(p.x, this.bedTop, p.z)
+      view.root.position.set(p.x, p.inBed ? T.bed.height : 0, p.z)
       s.add(view.root)
       this.plants.push(view)
+      if (!p.inBed) {
+        // A ring of mulch round each plant outside the bed: its colour shows the soil's moisture.
+        const mat = lambert(MULCH_DRY)
+        const r = (T.kinds[p.kind].reach ?? 0.5) * 0.85
+        const ring = new THREE.Mesh(new THREE.CircleGeometry(r, 24), mat)
+        ring.rotation.x = -Math.PI / 2
+        ring.position.set(p.x, 0.015, p.z)
+        ring.receiveShadow = true
+        s.add(ring)
+        this.soil.push(mat)
+      }
       const icon = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, opacity: 0, depthWrite: false }))
-      icon.scale.setScalar(0.45)
+      icon.scale.setScalar(0.55)
       icon.renderOrder = 10
       s.add(icon)
       this.icons.push(icon)
@@ -105,7 +117,8 @@ export class GardenScene {
     for (let i = 0; i < m; i++) this.mistDots.push({ t: i / m, ox: 0, oz: 0 })
     s.add(this.mist)
 
-    this.wind = new WindView(s)
+    this.wind = new WindView(s, garden.plants.length)
+    this.effects = new Effects(s, garden)
 
     const beeBody = new THREE.SphereGeometry(0.045, 8, 6)
     const beeMat = new THREE.MeshLambertMaterial({ color: 0xe6b422 })
@@ -124,71 +137,6 @@ export class GardenScene {
       bee.visible = false
       s.add(bee)
       this.bees.push(bee)
-    }
-  }
-
-  private buildYard() {
-    const r = rng(7)
-    const ground = new THREE.PlaneGeometry(90, 90, 90, 90)
-    ground.rotateX(-Math.PI / 2)
-    const colors: number[] = []
-    const c = new THREE.Color()
-    for (let i = 0; i < ground.attributes.position.count; i++) {
-      c.setHSL(0.24 + r() * 0.03, 0.42, 0.36 + r() * 0.06)
-      colors.push(c.r, c.g, c.b)
-    }
-    ground.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-    const grass = new THREE.Mesh(ground, shaded(new THREE.MeshLambertMaterial({ vertexColors: true })))
-    grass.receiveShadow = true
-    this.scene.add(grass)
-
-    // Tufts, kept off the bed and the pond.
-    const tuft = new THREE.ConeGeometry(0.035, 0.2, 3)
-    tuft.translate(0, 0.1, 0)
-    const count = 7000
-    const tufts = new THREE.InstancedMesh(tuft, lambert(0xffffff), count)
-    const m = new THREE.Matrix4()
-    let placed = 0
-    while (placed < count) {
-      const x = (r() - 0.5) * 34
-      const z = (r() - 0.5) * 22 - 2
-      const inBed = Math.abs(x) < T.bed.width / 2 + 0.2 && Math.abs(z) < T.bed.depth / 2 + 0.2
-      const inPond = Math.hypot(x - T.pond.x, z - T.pond.z) < T.pond.radius + 0.35
-      if (inBed || inPond) continue
-      const s = 0.6 + r() * 0.7
-      m.makeRotationY(r() * 6).scale(new THREE.Vector3(s, s * (0.7 + r() * 0.8), s)).setPosition(x, 0, z)
-      tufts.setMatrixAt(placed, m)
-      tufts.setColorAt(placed, c.setHSL(0.22 + r() * 0.06, 0.45, 0.3 + r() * 0.12))
-      placed++
-    }
-    tufts.castShadow = true
-    this.scene.add(tufts)
-
-    // A fence along the back and a few round trees beyond it.
-    const wood = lambert(0xb08a5e)
-    const post = new THREE.BoxGeometry(0.12, 1.3, 0.12)
-    const rail = new THREE.BoxGeometry(22, 0.1, 0.06)
-    for (let x = -11; x <= 11; x += 1.6) {
-      const p = new THREE.Mesh(post, wood)
-      p.position.set(x, 0.65, -6.2)
-      p.castShadow = true
-      this.scene.add(p)
-    }
-    for (const y of [0.45, 1.05]) {
-      const rl = new THREE.Mesh(rail, wood)
-      rl.position.set(0, y, -6.15)
-      rl.castShadow = true
-      this.scene.add(rl)
-    }
-    // A hedge of round shrubs behind the fence: trees would only show their trunks.
-    const crown = new THREE.IcosahedronGeometry(1, 1)
-    for (let x = -14; x <= 14; x += 1.3 + r() * 0.6) {
-      const shrub = new THREE.Mesh(crown, lambert(new THREE.Color().setHSL(0.25 + r() * 0.05, 0.4, 0.27 + r() * 0.08).getHex()))
-      const s = 0.7 + r() * 0.45
-      shrub.scale.set(s * 1.2, s, s)
-      shrub.position.set(x, s * 0.6, -7 - r() * 0.6)
-      shrub.castShadow = true
-      this.scene.add(shrub)
     }
   }
 
@@ -226,29 +174,6 @@ export class GardenScene {
     }
   }
 
-  private buildPond() {
-    const { x, z, radius } = T.pond
-    const water = new THREE.Mesh(
-      new THREE.CircleGeometry(radius, 48),
-      shaded(new THREE.MeshStandardMaterial({ color: 0x4b87a8, roughness: 0.12, metalness: 0.1 })),
-    )
-    water.rotation.x = -Math.PI / 2
-    water.position.set(x, 0.03, z)
-    water.receiveShadow = true
-    this.scene.add(water)
-    const stone = new THREE.DodecahedronGeometry(0.17, 0)
-    const r = rng(3)
-    for (let i = 0; i < 26; i++) {
-      const a = (i / 26) * Math.PI * 2
-      const st = new THREE.Mesh(stone, lambert(new THREE.Color().setHSL(0.1, 0.06, 0.5 + r() * 0.15).getHex()))
-      st.position.set(x + Math.cos(a) * (radius + 0.1), 0.05, z + Math.sin(a) * (radius + 0.1))
-      st.rotation.set(r() * 3, r() * 3, r() * 3)
-      st.scale.set(1 + r() * 0.5, 0.6, 1 + r() * 0.4)
-      st.castShadow = true
-      this.scene.add(st)
-    }
-  }
-
   private buildCloud() {
     const geo = new THREE.IcosahedronGeometry(1, 2)
     const puffs: [number, number, number, number][] = [
@@ -273,7 +198,7 @@ export class GardenScene {
     this.scene.add(this.cloud)
   }
 
-  /** Point on the bed's surface under a pointer at client (CSS pixel) coordinates. */
+  /** Point on the ground under a pointer at client (CSS pixel) coordinates. */
   groundPointAt(clientX: number, clientY: number) {
     const rect = this.canvas.getBoundingClientRect()
     const ndc = new THREE.Vector2(
@@ -282,22 +207,37 @@ export class GardenScene {
     )
     this.ray.setFromCamera(ndc, this.camera)
     const hit = new THREE.Vector3()
-    return this.ray.ray.intersectPlane(this.plane, hit) ? { x: hit.x, z: hit.z } : null
+    // Aim at the bed's top when over the bed, and at the lawn elsewhere.
+    const lawn = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+    if (!this.ray.ray.intersectPlane(lawn, hit)) return null
+    if (onBed(hit.x, hit.z, 0.5)) {
+      const top = new THREE.Plane(new THREE.Vector3(0, 1, 0), -T.bed.height)
+      this.ray.ray.intersectPlane(top, hit)
+    }
+    return { x: hit.x, z: hit.z }
   }
 
   /** The plant nearest a ground point, if the point is on or very near it. */
-  plantNear(garden: Garden, at: { x: number; z: number } | null) {
+  plantNear(garden: Garden, at: { x: number; z: number } | null): Plant | null {
     if (!at) return null
-    let best = null
-    let bestD = 0.55
+    let best: Plant | null = null
+    let bestD = Infinity
     for (const p of garden.plants) {
       const d = Math.hypot(p.x - at.x, p.z - at.z)
-      if (d < bestD) {
+      if (d < (T.kinds[p.kind].reach ?? 0.55) && d < bestD) {
         best = p
         bestD = d
       }
     }
     return best
+  }
+
+  /** Move the view across the garden, staying over the yard. */
+  pan(dx: number, dz: number) {
+    const y = T.yard
+    this.focus.x = THREE.MathUtils.clamp(this.focus.x + dx, y.x0 + 6, y.x1 - 6)
+    this.focus.y = THREE.MathUtils.clamp(this.focus.y + dz, y.z0 + 4, y.z1 - 3)
+    this.placeCamera()
   }
 
   resize() {
@@ -306,47 +246,63 @@ export class GardenScene {
     this.renderer.setSize(w, h)
     const aspect = w / h
     this.camera.aspect = aspect
-    // Frame the pond and the whole bed whatever the window's shape.
     const vfov = THREE.MathUtils.degToRad(this.camera.fov)
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * aspect)
-    const dist = Math.max(7.4 / Math.tan(hfov / 2), 5 / Math.tan(vfov / 2))
-    const look = new THREE.Vector3(-1, 0, -0.3)
-    const dir = new THREE.Vector3(0, 0.82, 1).normalize()
-    this.camera.position.copy(look).addScaledVector(dir, dist)
-    this.camera.lookAt(look)
+    // Show about `viewWidth` metres across, but never so little depth that the view feels cramped.
+    this.dist = Math.max(T.camera.viewWidth / 2 / Math.tan(hfov / 2), 7 / Math.tan(vfov / 2))
     this.camera.updateProjectionMatrix()
+    this.placeCamera()
+  }
+
+  private placeCamera() {
+    const look = new THREE.Vector3(this.focus.x, 0, this.focus.y)
+    const dir = new THREE.Vector3(0, 0.82, 1).normalize()
+    this.camera.position.copy(look).addScaledVector(dir, this.dist)
+    this.camera.lookAt(look)
   }
 
   render(garden: Garden, dt: number) {
     const t = garden.time
     const c = garden.cloud
+    const day = garden.daylight
+    const night = 1 - day
+
+    this.light(garden, day)
     shadeUniforms.uCloud.value.set(c.x, c.z)
     shadeUniforms.uRadius.value = garden.radius
     shadeUniforms.uSoft.value = garden.softEdge
+    shadeUniforms.uDark.value = THREE.MathUtils.lerp(1, T.render.shadeDarkness, day)
 
-    // Cloud: as wide as its shade, puffier the more it holds, grey when raining.
-    this.cloud.position.set(c.x, T.cloud.height + Math.sin(t * 0.8) * 0.06, c.z)
+    // Cloud: as wide as its shade, puffier the more it holds, grey when raining,
+    // and down low and thin when it's lying as fog.
+    const k = 1 - Math.exp(-dt * 3)
+    this.cloudY += ((c.fogging ? 0.55 : T.cloud.height) - this.cloudY) * k
+    this.cloud.position.set(c.x, this.cloudY + Math.sin(t * 0.8) * 0.06, c.z)
     const wide = garden.radius / T.cloud.size.reference
     const fill = c.water / c.capacity
-    this.cloud.scale.set(wide, wide * (0.55 + 0.25 * fill) + 0.2, wide)
+    const tall = c.fogging ? 0.35 : wide * (0.55 + 0.25 * fill) + 0.2
+    this.cloud.scale.set(wide, tall, wide)
     this.puffs.forEach((p, i) => {
       const base = p.userData.base as THREE.Vector3
       p.position.set(base.x, base.y + Math.sin(t * 1.1 + i) * 0.03, base.z)
     })
     const grey = c.raining ? 0.25 : 0
-    const k = 1 - Math.exp(-dt * 4)
-    this.cloudMat.emissive.lerp(new THREE.Color(0x9aa6b0).multiplyScalar(1 - grey), k)
+    const glow = 0.25 + 0.75 * day
+    this.cloudMat.emissive.lerp(new THREE.Color(0x9aa6b0).multiplyScalar((1 - grey) * glow), k)
     this.cloudMat.color.lerp(new THREE.Color(1 - grey, 1 - grey, 1 - grey * 0.8), k)
+    this.cloudMat.opacity += ((c.fogging ? 0.5 : 1) - this.cloudMat.opacity) * k
 
     this.updateRain(garden, dt)
     this.updateMist(garden, dt)
+    this.world.setNight(night)
+    this.world.fadeOak(c.x, c.z, dt)
 
     garden.plants.forEach((p, i) => {
       const view = this.plants[i]
-      view.update(p, t, garden.breezeAt(p.x, p.z), c.windX, c.windZ)
+      view.update(p, t, garden.breezeAt(p.x, p.z), c.windX, c.windZ, night)
       const m = p.moisture
       const soil = this.soil[i]
-      soil.color.copy(DRY).lerp(WET, Math.min(1, m / 0.75))
+      soil.color.copy(p.inBed ? DRY : MULCH_DRY).lerp(WET, Math.min(1, m / 0.75))
       if (m > 0.75) soil.color.lerp(SOAKED, (m - 0.75) / 0.25)
 
       const icon = this.icons[i]
@@ -356,12 +312,34 @@ export class GardenScene {
       mat.opacity += (want - mat.opacity) * (1 - Math.exp(-dt * 5))
       mat.needsUpdate = true
       icon.visible = mat.opacity > 0.02
-      icon.position.set(p.x, view.top + 0.38 + Math.sin(t * 2 + i) * 0.04, p.z)
+      icon.position.set(p.x, view.top + 0.42 + Math.sin(t * 2 + i) * 0.04, p.z)
     })
 
     this.wind.update(garden, dt)
+    this.effects.update(garden, this.camera, dt)
     this.updateBees(garden)
     this.renderer.render(this.scene, this.camera)
+  }
+
+  /** Sky colour, sun and moon, and the lightning flash. */
+  private light(garden: Garden, day: number) {
+    const dusk = Math.max(0, 1 - Math.abs(day - 0.45) / 0.35) * (day < 0.98 ? 1 : 0)
+    this.sky.copy(SKY_NIGHT).lerp(SKY_DAY, day).lerp(SKY_DUSK, dusk * 0.45)
+    const flash = this.effects?.flash ?? 0
+    if (flash > 0) this.sky.lerp(new THREE.Color(0xf4f6ff), flash * 0.5)
+    ;(this.scene.fog as THREE.Fog).color.copy(this.sky)
+
+    this.hemi.intensity = 0.35 + 1.15 * day + flash * 2
+    this.hemi.color.setHex(0xe4f2ff).lerp(new THREE.Color(0x6f80b8), 1 - day)
+    const s = sunDirection(garden.time)
+    const f = new THREE.Vector3(this.focus.x, 0, this.focus.y)
+    this.sun.position.set(f.x + s.x * 30, s.y * 30, f.z + s.z * 30)
+    this.sun.target.position.copy(f)
+    this.sun.intensity = 2.4 * day
+    this.sun.color.setHex(0xfff0d0).lerp(new THREE.Color(0xffb070), dusk * 0.6)
+    this.moon.position.set(f.x - 10, 25, f.z + 12)
+    this.moon.target.position.copy(f)
+    this.moon.intensity = 0.55 * (1 - day)
   }
 
   private updateRain(garden: Garden, dt: number) {
@@ -374,7 +352,7 @@ export class GardenScene {
     this.drops.forEach((d, i) => {
       if (d.live) {
         d.y -= fall
-        const floor = this.onBed(d.x, d.z) ? this.bedTop : 0
+        const floor = onBed(d.x, d.z) ? T.bed.height : 0
         if (d.y < floor) d.live = false
       }
       if (!d.live && spawn > 0) {
@@ -420,18 +398,20 @@ export class GardenScene {
   private updateBees(garden: Garden) {
     const t = garden.time
     const per = T.render.beesPerPlant
+    const awake = garden.daylight > 0.4
     garden.plants.forEach((p, i) => {
-      const bloomed = p.growth >= 1
+      const bloomed = p.growth >= 1 && awake
       const top = this.plants[i].top
+      const spread = (T.kinds[p.kind].reach ?? 0.5) * 0.9
       for (let j = 0; j < per; j++) {
         const bee = this.bees[i * per + j]
         bee.visible = bloomed
         if (!bloomed) continue
         const path = (s: number) =>
           new THREE.Vector3(
-            p.x + Math.sin(s) * 0.45 + Math.sin(s * 2.3) * 0.12,
-            top + 0.1 + Math.sin(s * 3.1) * 0.12,
-            p.z + Math.cos(s * 0.8) * 0.4,
+            p.x + Math.sin(s) * spread + Math.sin(s * 2.3) * 0.12,
+            top - 0.2 + Math.sin(s * 3.1) * 0.15,
+            p.z + Math.cos(s * 0.8) * spread,
           )
         const s = t * (1.3 + j * 0.4) + i * 1.7 + j * 3
         bee.position.copy(path(s))
@@ -439,9 +419,5 @@ export class GardenScene {
         bee.children[2].scale.y = 0.15 + Math.abs(Math.sin(t * 60 + j)) * 0.1
       }
     })
-  }
-
-  private onBed(x: number, z: number) {
-    return Math.abs(x) < T.bed.width / 2 && Math.abs(z) < T.bed.depth / 2
   }
 }

@@ -60,6 +60,36 @@ export class Sound {
     this.rain.gain.setTargetAtTime(on ? T.audio.rainGain : 0, this.ctx.currentTime, T.audio.rainFade / 3)
   }
 
+  /** Thunder: a crack, then a long low roll. Noise only, nothing pitched. */
+  thunder() {
+    const ctx = this.ctx
+    if (!ctx) return
+    const now = ctx.currentTime
+    const len = 3.5
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * len), ctx.sampleRate)
+    const d = buf.getChannelData(0)
+    // Brownish noise with slow lumps in it, so it rolls rather than hisses.
+    let v = 0
+    for (let i = 0; i < d.length; i++) {
+      v = v * 0.985 + (Math.random() * 2 - 1) * 0.15
+      const t = i / ctx.sampleRate
+      const lump = 0.6 + 0.4 * Math.sin(t * 7 + Math.sin(t * 2.3) * 3)
+      d[i] = v * lump
+    }
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    const low = ctx.createBiquadFilter()
+    low.type = 'lowpass'
+    low.frequency.value = 380
+    low.Q.value = 0.5
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0, now)
+    g.gain.linearRampToValueAtTime(T.audio.thunderGain, now + 0.03)
+    g.gain.exponentialRampToValueAtTime(0.0001, now + len)
+    src.connect(low).connect(g).connect(ctx.destination)
+    src.start(now)
+  }
+
   bloom() {
     const ctx = this.ctx
     if (!ctx) return
