@@ -73,6 +73,82 @@ export const T = {
 
   pond: { x: -6, z: 4.5, radius: 1.6 },
 
+  /** The couple who live in the house, Rose and Walter, and where things are. */
+  people: {
+    walk: 1.1,
+    run: 2.6,
+    door: { x: -11.2, z: -5.85 },
+    seats: [
+      { x: -11.85, z: -4.5 },
+      { x: -10.15, z: -4.5 },
+    ],
+    porch: [
+      { x: -11.8, z: -5.5 },
+      { x: -10.6, z: -5.5 },
+    ],
+    feeder: { x: -13.8, z: -1.6 },
+    snowman: { x: -13.5, z: 3.6 },
+    /** Rose shovels this path through the snow: door, patio, stepping stones to the bed. */
+    shovelPath: [
+      { x: -11.2, z: -5.5 },
+      { x: -9, z: -2.6 },
+      { x: -6, z: -1.6 },
+      { x: -4.4, z: -0.6 },
+    ],
+    /** A slow loop with a lantern on a foggy day. */
+    lanternLoop: [
+      { x: -8, z: -1 },
+      { x: -3, z: 3 },
+      { x: 2, z: 5.5 },
+      { x: 6, z: 3 },
+      { x: 5, z: -3 },
+      { x: -2, z: -3.2 },
+      { x: -8.6, z: -2.6 },
+    ],
+    /** Seconds before a picked plant has more to give. */
+    regrow: 90,
+    teaEvery: 140,
+    teaFor: 25,
+    vase: 7,
+    /** Light rain on someone (from the cloud or the sky); above `downpour` everyone goes in. */
+    drizzle: 0.05,
+    downpour: 0.6,
+    nightBelow: 0.2,
+  },
+
+  /** The washing line in the side yard. Fresh wash is wet; sun and breeze dry it. */
+  wash: {
+    x0: -17.6,
+    x1: -11.8,
+    z: 0.6,
+    height: 1.85,
+    items: 5,
+    sunDry: 0.012,
+    breezeDry: 0.05,
+    /** How long Rose keeps unpegging in the rain before she gives up and runs in. */
+    rescueFor: 10,
+    pegTime: 1.1,
+  },
+
+  /** The animals that live in the garden, and how the habitat grows. */
+  habitat: {
+    burrow: { x: 18, z: 1.5 },
+    deerBed: { x: 4, z: -16.4 },
+    hive: { x: 13.2, z: -11.6 },
+    leafPile: { x: 17.4, z: -7.4 },
+    drey: { x: 9, z: -7 },
+    tick: 1,
+    growUp: 200,
+    nestStage: 45,
+    spawnRain: 25,
+    spawnStage: 50,
+    secondHive: 10,
+    saplingGrow: 600,
+    caps: { rabbits: 6, birds: 10, deer: 4, frogs: 10, saplings: 3, caches: 12 },
+    buryEvery: 15,
+    digEvery: 25,
+  },
+
   /** A big oak whose shade the ferns live in. Its shade follows the sun. */
   oak: { x: 12.5, z: 6.5, crownHeight: 4.5, crownRadius: 2.6, shadeLight: 0.35 },
 

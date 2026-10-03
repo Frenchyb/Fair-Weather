@@ -12,6 +12,8 @@ import { Ground } from './ground'
 import { WISHES, type WishId } from './journal'
 import { daylight, shadowOf } from './sky'
 import { visitors, type Visitors } from './wildlife'
+import { Habitat } from './habitat'
+import { People, type PeopleSound } from './people'
 
 export type Need = 'thirsty' | 'soggy' | 'wants-sun' | 'wants-shade'
 export type Stage = 'seed' | 'sprout' | 'leafy' | 'flowering' | 'bloom'
@@ -41,6 +43,8 @@ export interface Plant {
   rich: number
   /** Seconds until it next lets a seed go in the breeze. */
   seedTimer: number
+  /** When Rose or Walter last picked from it. Picking never sets growth back. */
+  picked: number
 }
 
 export interface Cloud {
@@ -145,6 +149,8 @@ export interface Hooks {
   onStorm?: () => void
   onStormRefused?: () => void
   onStormEnd?: () => void
+  /** Rose and Walter going about: a door, pegs, a shovel. */
+  onSound?: (s: PeopleSound) => void
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
@@ -203,7 +209,11 @@ export class Garden {
   readonly storm: Storm = { charge: T.storm.start, left: 0, nextStrike: 0 }
   readonly climate: Climate
   /** Who is visiting right now. */
-  visitors: Visitors = { birds: 0, rabbits: 0, frogs: 0, ducks: 0, deer: 0, geese: false }
+  visitors: Visitors = { ducks: 0, geese: false }
+  /** Rose and Walter, who live in the house. */
+  readonly people: People
+  /** The animals that live here. */
+  readonly habitat: Habitat
   /** Share of the lawn properly green, refreshed every step. */
   greenShare = 0
   /** Where leaves come down in autumn: the oak, the orchard, the hedge. */
@@ -237,6 +247,7 @@ export class Garden {
         pollinating: false,
         rich: 0,
         seedTimer: 0,
+        picked: -Infinity,
       })
     }
     this.cloud = {
@@ -258,6 +269,8 @@ export class Garden {
     this.ground = new Ground(() => this.random())
     this.climate = new Climate(() => this.random(), options.still)
     for (const p of this.plants) this.assess(p, 1)
+    this.people = new People(this, (s) => this.hooks.onSound?.(s))
+    this.habitat = new Habitat(() => this.random())
     this.trees.push(
       { x: T.oak.x, z: T.oak.z },
       ...T.plantings.filter((p) => p.kind === 'apple'),
@@ -369,6 +382,7 @@ export class Garden {
     if (this.storming) this.rage(dt)
     this.weatherGround(dt)
     for (const p of this.plants) this.tend(p, dt, day)
+    this.people.update(dt)
     this.drift(dt)
     this.age(dt)
 
@@ -408,7 +422,9 @@ export class Garden {
     let wet = 0
     for (let k = 0; k < g.wet.length; k++) if (g.lawn[k]) wet += Math.min(1, g.wet[k])
     const c = this.cloud
-    this.visitors = visitors({
+    this.visitors = visitors({ daylight: this.daylight, climate: this.climate })
+    const people = this.people
+    this.habitat.update(1, {
       time: this.time,
       daylight: this.daylight,
       climate: this.climate,
@@ -417,12 +433,31 @@ export class Garden {
       snowCover: g.snowCover,
       storming: this.storming,
       rainOnPond: c.raining && Math.hypot(c.x - T.pond.x, c.z - T.pond.z) < T.pond.radius + this.radius,
+      blooms: this.bloomed + this.wildflowers.filter((f) => f.growth >= 1).length,
+      sinceFed: this.time - people.fedAt,
+      lawnAt: (x, z) => {
+        const k = g.index(x, z)
+        return k >= 0 && g.lawn[k] === 1 && !this.plants.some((p) => Math.hypot(p.x - x, p.z - z) < 1.2)
+      },
     })
-    const v = this.visitors
-    if (v.rabbits > 0) this.wish('rabbits')
-    if (v.frogs > 0) this.wish('frogs')
-    if (v.deer > 0) this.wish('deer')
-    if (v.geese) this.wish('geese')
+    const h = this.habitat
+    if (this.visitors.geese) this.wish('geese')
+    if (h.rabbits.mode === 'graze' && this.daylight > 0.3) this.wish('rabbits')
+    if (h.frogs.mode === 'croak') this.wish('frogs')
+    if (h.deer.mode === 'graze') this.wish('deer')
+    if (h.rabbits.kits > 0) this.wish('kits')
+    if (h.birds.nest === 'chicks') this.wish('chicks')
+    if (h.deer.fawns > 0) this.wish('fawn')
+    if (h.frogs.spawn === 'tadpoles') this.wish('tadpoles')
+    if (h.bees.hives > 1) this.wish('second-hive')
+    if (h.squirrels.saplings.length) this.wish('sapling')
+    if (h.hedgehog.mode === 'hunting') this.wish('hedgehog')
+    if (people.all.every((p) => p.doing === 'tea')) this.wish('tea')
+    if (people.dried > 0) this.wish('washing')
+    if (people.caughtOut) this.wish('caught-out')
+    if (people.pantry.tomato + people.pantry.apple + people.pantry.lettuce >= 3) this.wish('harvest')
+    if (people.vase.length >= 3) this.wish('vase')
+    if (people.snowman.size >= 1) this.wish('snowman')
   }
 
   private wish(id: WishId) {

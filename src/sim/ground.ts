@@ -196,6 +196,11 @@ export class Ground {
     }
   }
 
+  /** Shovelled clear. */
+  clearSnow(cx: number, cz: number, r: number) {
+    this.disc(cx, cz, r, (k) => (this.snow[k] = 0))
+  }
+
   /** The breeze pushes fallen leaves downwind, so they drift into piles. */
   blowLeaves(cx: number, cz: number, reach: number, wx: number, wz: number, amount: number) {
     const di = Math.abs(wx) > Math.abs(wz) ? Math.sign(wx) : 0

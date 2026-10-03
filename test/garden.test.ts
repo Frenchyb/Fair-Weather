@@ -745,33 +745,247 @@ describe('weather over the whole garden', () => {
   })
 })
 
-describe('wildlife', () => {
-  it('rabbits come once the lawn is green, and keep away in the rain', () => {
+const lushLawn = (g: Garden) => {
+  for (let k = 0; k < g.ground.green.length; k++) if (g.ground.lawn[k]) g.ground.green[k] = 0.9
+}
+const bloomAll = (g: Garden) => {
+  for (const p of g.plants) p.growth = 1
+}
+
+describe('the animals that live here', () => {
+  it('rabbits graze a green lawn and duck into the burrow in the rain, but never leave', () => {
     const g = new Garden()
-    run(g, 20, idle)
-    expect(g.visitors.rabbits).toBe(0)
-    for (let k = 0; k < g.ground.green.length; k++) if (g.ground.lawn[k]) g.ground.green[k] = 0.9
+    lushLawn(g)
     run(g, 3, idle)
-    expect(g.visitors.rabbits).toBeGreaterThan(0)
-    expect(g.visitors.birds).toBeGreaterThan(0)
+    const h = g.habitat
+    expect(h.rabbits.mode).toBe('graze')
+    const count = h.rabbits.adults
     run(g, 60, { ...idle, weather: 'rain' })
-    expect(g.visitors.rabbits).toBe(0)
-    expect(g.visitors.frogs).toBeGreaterThan(0)
+    expect(['burrow', 'peek']).toContain(h.rabbits.mode)
+    expect(h.rabbits.adults).toBe(count)
+    run(g, 60, { ...idle, weather: 'clear' })
+    expect(h.rabbits.mode).toBe('graze')
   })
 
-  it('geese go over in autumn, and deer only come at dawn and dusk', () => {
+  it('a lush spring brings rabbit kits, which grow up into the warren', () => {
     const g = new Garden()
+    run(g, 1, { ...idle, season: 'spring' })
+    lushLawn(g)
+    run(g, 40, idle)
+    expect(g.habitat.rabbits.kits).toBe(2)
+    run(g, T.habitat.growUp + 5, idle)
+    expect(g.habitat.rabbits.kits).toBe(0)
+    expect(g.habitat.rabbits.adults).toBe(4)
+  })
+
+  it('the nest in the oak goes from eggs to chicks to fledglings to two more birds', () => {
+    const g = new Garden()
+    run(g, 1, { ...idle, season: 'spring' })
+    lushLawn(g)
+    const stages = new Set<string>()
+    run(g, T.habitat.nestStage * 3 + 40, (gg) => (stages.add(gg.habitat.birds.nest), idle))
+    expect([...stages]).toEqual(expect.arrayContaining(['eggs', 'chicks', 'fledglings', 'empty']))
+    expect(g.habitat.birds.adults).toBe(5)
+  })
+
+  it('frogs sleep through winter, croak in the rain, and a wet spring brings tadpoles', () => {
+    const g = new Garden()
+    run(g, 1, { ...idle, season: 'winter' })
+    run(g, 80, idle)
+    expect(g.habitat.frogs.mode).toBe('asleep')
+    run(g, 1, { ...idle, season: 'spring', weather: 'rain' })
+    run(g, 80, idle)
+    expect(g.habitat.frogs.mode).toBe('croak')
+    const stages = new Set<string>()
+    run(g, T.habitat.spawnStage * 3 + 20, (gg) => (stages.add(gg.habitat.frogs.spawn), idle))
+    expect(stages.has('tadpoles')).toBe(true)
+    expect(g.habitat.frogs.adults).toBe(5)
+  })
+
+  it('deer rest by day, shelter in the rain, and graze at dawn and dusk', () => {
+    const g = new Garden()
+    let grazeByDay = 0
+    let grazeAtDusk = 0
+    run(g, CYCLE, (gg) => {
+      const p = dayProgress(gg.time)
+      if (gg.habitat.deer.mode === 'graze') p > 0.25 && p < 0.75 && gg.daylight > 0.5 ? grazeByDay++ : grazeAtDusk++
+      return idle
+    })
+    expect(grazeByDay).toBe(0)
+    expect(grazeAtDusk).toBeGreaterThan(0)
+    run(g, 60, { ...idle, weather: 'rain' })
+    expect(g.habitat.deer.mode).toBe('shelter')
+  })
+
+  it('squirrels bury acorns in autumn, dig most up in winter, and one forgotten comes up a sapling', () => {
+    const g = new Garden()
+    run(g, 1, { ...idle, season: 'autumn' })
+    run(g, 150, idle)
+    const buried = g.habitat.squirrels.caches.length
+    expect(buried).toBeGreaterThan(3)
+    run(g, 1, { ...idle, season: 'winter' })
+    run(g, 150, idle)
+    expect(g.habitat.squirrels.caches.length).toBeLessThan(buried)
+    expect(g.habitat.squirrels.caches.length).toBeGreaterThan(0)
+    run(g, 1, { ...idle, season: 'spring' })
+    run(g, 5, idle)
+    expect(g.habitat.squirrels.saplings.length).toBe(1)
+    run(g, 120, idle)
+    expect(g.habitat.squirrels.saplings[0].growth).toBeGreaterThan(0)
+  })
+
+  it('ten blooms start a second hive, and it stays', () => {
+    const g = new Garden()
+    run(g, 2, idle)
+    expect(g.habitat.bees.hives).toBe(1)
+    bloomAll(g)
+    run(g, 2, idle)
+    expect(g.habitat.bees.hives).toBe(2)
+    for (const p of g.plants) p.growth = 1
+    run(g, 2, { ...idle, weather: 'rain' })
+    expect(g.habitat.bees.hives).toBe(2)
+  })
+
+  it('the hedgehog sleeps by day, hunts after rain at night, and hibernates in winter', () => {
+    const g = new Garden()
+    run(g, 20, idle)
+    expect(g.habitat.hedgehog.mode).toBe('asleep')
+    run(g, 1, { ...idle, weather: 'rain' })
+    run(g, T.day.length - 30, idle)
+    run(g, 1, { ...idle, weather: 'clear' })
+    run(g, 40, idle)
+    expect(g.daylight).toBeLessThan(0.3)
+    expect(g.habitat.hedgehog.mode).toBe('hunting')
+    run(g, 1, { ...idle, season: 'winter' })
+    run(g, 60, idle)
+    expect(g.habitat.hedgehog.mode).toBe('hibernating')
+  })
+
+  it('ducks visit the pond by day and geese go over in autumn', () => {
+    const g = new Garden()
+    run(g, 2, idle)
+    expect(g.visitors.ducks).toBeGreaterThan(0)
     run(g, 1, { ...idle, season: 'autumn' })
     run(g, 60, idle)
     expect(g.visitors.geese).toBe(true)
-    let deerByDay = 0
-    let deerAtDusk = 0
-    run(g, T.day.length + T.day.night, (gg) => {
-      const p = dayProgress(gg.time)
-      if (gg.visitors.deer) p > 0.25 && p < 0.75 ? deerByDay++ : deerAtDusk++
+  })
+})
+
+describe('Rose and Walter', () => {
+  it('Rose hangs the washing out on a fine morning, and the sun dries it', () => {
+    const g = new Garden()
+    run(g, 40, idle)
+    const items = g.people.wash.items
+    expect(items.every((i) => i.out)).toBe(true)
+    run(g, 120, idle)
+    expect(g.people.dried).toBe(1)
+    expect(items.every((i) => !i.out)).toBe(true)
+  })
+
+  it('a breeze dries the washing faster than sun alone', () => {
+    const dryTime = (breeze: boolean) => {
+      const g = new Garden()
+      run(g, 40, idle)
+      const mid = { x: (T.wash.x0 + T.wash.x1) / 2, z: T.wash.z + 1 }
+      parkOver(g, mid.x, mid.z)
+      let t = 0
+      // The middle sheet, right under the breeze.
+      const sheet = g.people.wash.items[2]
+      while (sheet.out && sheet.wet > 0.03 && t < 200) {
+        g.update(DT, { target: mid, rain: false, breeze })
+        t += DT
+      }
+      return t
+    }
+    expect(dryTime(true)).toBeLessThan(dryTime(false) * 0.6)
+  })
+
+  it('when rain starts on the line she runs out to bring it in, and anything left out dries later', () => {
+    const g = new Garden()
+    run(g, 40, idle)
+    expect(g.people.wash.items.every((i) => i.out)).toBe(true)
+    run(g, 1, { ...idle, weather: 'rain' })
+    let ran = false
+    run(g, 8, (gg) => ((ran ||= gg.people.rose.moving === 'run'), idle))
+    expect(ran).toBe(true)
+    run(g, 30, idle)
+    expect(g.people.wash.items.some((i) => !i.out)).toBe(true)
+    for (const i of g.people.wash.items) if (i.out) expect(i.wet).toBe(1)
+    run(g, 1, { ...idle, weather: 'clear' })
+    run(g, 110, idle)
+    expect(g.people.wash.items.every((i) => !i.out)).toBe(true)
+  })
+
+  it('Walter picks what is ripe, and picking never sets a plant back', () => {
+    const g = new Garden()
+    bloomAll(g)
+    run(g, 120, idle)
+    const p = g.people.pantry
+    expect(p.tomato + p.lettuce + p.apple).toBeGreaterThan(0)
+    for (const pl of g.plants) expect(pl.growth).toBe(1)
+  })
+
+  it('Rose cuts flowers for the vase in the window, and it keeps them', () => {
+    const g = new Garden()
+    bloomAll(g)
+    run(g, 240, idle)
+    expect(g.people.vase.length).toBeGreaterThanOrEqual(2)
+    run(g, CYCLE, idle)
+    expect(g.people.vase.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('everyone goes in for a downpour and at night, and out on the porch for a storm', () => {
+    const g = new Garden()
+    run(g, 30, idle)
+    run(g, 1, { ...idle, weather: 'rain' })
+    run(g, 40, idle)
+    for (const p of g.people.all) expect(p.inside).toBe(true)
+    run(g, 1, { ...idle, weather: 'clear' })
+    run(g, 30, idle)
+    g.storm.charge = 1
+    g.update(DT, { ...idle, storm: true })
+    run(g, 15, idle)
+    for (const p of g.people.all) {
+      expect(p.inside).toBe(false)
+      expect(Math.hypot(p.x - T.people.door.x, p.z - T.people.door.z)).toBeLessThan(1.5)
+    }
+    for (let t = 0; t < CYCLE && g.daylight > 0.05; t += 1) run(g, 1, idle)
+    run(g, 20, idle)
+    expect(g.daylight).toBeLessThan(0.1)
+    for (const p of g.people.all) expect(p.inside).toBe(true)
+  })
+
+  it('in the snow Walter builds a snowman and Rose shovels the path', () => {
+    const g = new Garden()
+    run(g, 1, { ...idle, season: 'winter', weather: 'snow' })
+    run(g, 110, idle)
+    expect(g.ground.snowCover).toBeGreaterThan(0.3)
+    run(g, 1, { ...idle, weather: 'clear' })
+    run(g, 60, idle)
+    expect(g.people.snowman.size).toBe(1)
+    const path = T.people.shovelPath[2]
+    expect(g.ground.snowAt(path.x, path.z)).toBeLessThan(0.1)
+  })
+
+  it('they have tea together on a sunny afternoon', () => {
+    const g = new Garden()
+    let together = false
+    run(g, 200, (gg) => {
+      if (gg.people.all.every((p) => p.doing === 'tea')) together = true
       return idle
     })
-    expect(deerByDay).toBe(0)
-    expect(deerAtDusk).toBeGreaterThan(0)
+    expect(together).toBe(true)
+  })
+
+  it('nobody walks through the bed or the pond', () => {
+    const g = new Garden()
+    bloomAll(g)
+    run(g, 400, (gg) => {
+      for (const p of gg.people.all) {
+        expect(onBed(p.x, p.z, -0.05)).toBe(false)
+        expect(Math.hypot(p.x - T.pond.x, p.z - T.pond.z)).toBeGreaterThan(T.pond.radius - 0.05)
+      }
+      return idle
+    })
   })
 })
