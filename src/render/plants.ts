@@ -106,16 +106,19 @@ export class PlantView {
       flowering *= night
       if (this.glow) this.glow.emissiveIntensity = night * 0.9
     }
-    for (const f of this.flowers) {
-      f.visible = flowering > 0
+    // Picked or cut lately: only some of it has grown back.
+    const back = Math.min(1, (time - p.picked) / T.people.regrow)
+    const keep = (i: number, n: number) => i < Math.ceil(n * (0.25 + 0.75 * back))
+    for (const [i, f] of this.flowers.entries()) {
+      f.visible = flowering > 0 && keep(i, this.flowers.length)
       f.scale.setScalar(flowering * (f.userData.size as number))
     }
     if (this.fruitMat) {
       const set = ramp(p.growth, 0.82, 0.92)
       const ripe = ramp(p.growth, 0.9, 1)
       this.fruitMat.color.setRGB(0.45 + 0.45 * ripe, 0.62 - 0.45 * ripe, 0.2 - 0.08 * ripe)
-      for (const f of this.fruit) {
-        f.visible = set > 0
+      for (const [i, f] of this.fruit.entries()) {
+        f.visible = set > 0 && keep(i, this.fruit.length)
         f.scale.setScalar(set * (f.userData.size as number))
       }
     }

@@ -153,9 +153,9 @@ export class World {
     this.water.roughness = 0.12 + winter * 0.3
   }
 
-  /** 0 by day, 1 at night: lights on in the house. */
-  setNight(night: number) {
-    this.windows.emissiveIntensity = night * 1.4
+  /** 0 by day, 1 at night: lights on in the house. `inside` adds a glow when someone is in at the window. */
+  setNight(night: number, inside = 0) {
+    this.windows.emissiveIntensity = Math.max(night, inside * 0.35) * 1.4
     this.lamps.emissiveIntensity = night * 4
   }
 

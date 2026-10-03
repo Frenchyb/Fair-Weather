@@ -4,6 +4,7 @@ import { SEASONS, WEATHERS, type Season, type WeatherKind } from './sim/climate'
 import { GardenScene } from './render/scene'
 import { Garden, type StrikeRefusal } from './sim/garden'
 import { WISHES } from './sim/journal'
+import { dayProgress } from './sim/sky'
 import { T } from './tuning'
 
 const canvas = document.getElementById('view') as HTMLCanvasElement
@@ -78,6 +79,7 @@ const garden = new Garden({
     sound.bloom()
   },
   onStrike: () => sound.thunder(),
+  onSound: (s) => sound.play(s),
   onStrikeRefused: (why) => REFUSED[why] && say(REFUSED[why]),
   onRainbow: () => say('A rainbow. The butterflies are coming out.'),
   onStormReady: () => say('A storm has gathered. Press G to let it go wherever your cloud is.'),
@@ -202,18 +204,32 @@ function frame(now: number) {
   if (input.fog && !garden.cloud.fogging) input.fog = false
   const cl = garden.climate
   const showering = (garden.cloud.raining && !cl.dormant) || garden.storming
-  sound.setRaining(Math.max(showering ? 1 : 0, cl.rainfall * 0.85))
-  sound.setBreeze(garden.cloud.breezing)
+  const c = garden.cloud
+  const showerNear = (x: number, z: number, r: number) => c.raining && !cl.dormant && Math.hypot(c.x - x, c.z - z) < garden.radius + r
+  const storming = garden.storming ? 1 : 0
+  const sky = cl.rainfall * 0.85
+  sound.setRaining(
+    Math.max(showering ? 1 : 0, sky),
+    Math.max(storming, sky, showerNear(-12, -9, 5) ? 0.8 : 0),
+    Math.max(storming, sky, showerNear(T.pond.x, T.pond.z, T.pond.radius) ? 1 : 0),
+  )
+  const mix = cl.mix
+  sound.setBreeze(garden.cloud.breezing, Math.max(storming, mix.rain * 0.35 + mix.overcast * 0.2 + mix.snow * 0.25))
   view.render(garden, dt, wall)
-  const v = garden.visitors
+  const h = garden.habitat
   // Crickets on a warm, dry night.
   const warm = cl.look.summer + cl.look.spring * 0.5
   const crickets = (1 - garden.daylight) * warm * (1 - cl.rainfall) * (cl.dormant ? 0 : 1)
-  sound.ambience(dt, v.birds, v.frogs, crickets)
-  for (const e of view.wildlife.events.splice(0)) {
-    if (e === 'honk') sound.honk()
-    else if (e === 'flutter') sound.flutter()
-  }
+  const singing = h.birds.mode === 'nest' ? 0 : h.birds.mode === 'quiet' ? h.birds.adults * 0.2 : h.birds.adults
+  const croaking = h.frogs.mode === 'chorus' ? h.frogs.adults * 1.5 : h.frogs.mode === 'croak' ? h.frogs.adults : 0
+  const p = dayProgress(garden.time)
+  const dawn = garden.daylight > 0.02 && p < 0.16 && !cl.dormant ? 1 : 0
+  sound.ambience(dt, singing, croaking, crickets, dawn)
+  sound.setBees(h.bees.mode === 'busy' ? Math.min(1, garden.bloomed / 4) : 0)
+  for (const e of view.wildlife.events.splice(0)) sound.play(e)
+  // Sheets snapping on the line in a breeze.
+  const out = garden.people.wash.items.some((it) => it.out)
+  if (out && (c.breezing || garden.storming) && Math.random() < dt * 0.6) sound.play('snap')
   if (cl.season !== shownSeason) {
     shownSeason = cl.season
     say(SEASON_SAY[cl.season])

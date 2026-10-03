@@ -1,7 +1,10 @@
 /**
- * Rain on leaves, a breeze, and a soft chime when a plant comes into bloom.
- * Round that, the garden's own life: birdsong by day, crickets on a warm
- * night, frogs at the pond, geese going over.
+ * Rain on leaves, on the shed roof and on the pond, the wind, and a soft
+ * chime when a plant comes into bloom. Round that, the garden's own life:
+ * birdsong by day and a dawn chorus, crickets on a warm night, frogs, bees,
+ * a rabbit's thump, a deer's snort, squirrels chattering, chicks in the nest,
+ * and Rose and Walter about the place: the back door, teacups, the shovel,
+ * pegs on the line, sheets snapping in the breeze. No music.
  * Browsers only allow sound after a click or key press, so `start()` is
  * called from the first one.
  */
@@ -13,6 +16,10 @@ export class Sound {
   private wind?: GainNode
   private crickets?: GainNode
   private noise?: AudioBuffer
+  private roof?: GainNode
+  private hum?: GainNode
+  private pondRain = 0
+  private weatherWind = 0
 
   start() {
     if (this.ctx) return
@@ -54,28 +61,79 @@ export class Sound {
     this.wind.gain.value = 0
     windSrc.connect(windLow).connect(this.wind).connect(ctx.destination)
     windSrc.start()
+
+    // Rain on the shed and house roofs: the same noise, duller and slower, drumming.
+    const roofSrc = ctx.createBufferSource()
+    roofSrc.buffer = buf
+    roofSrc.loop = true
+    roofSrc.playbackRate.value = 0.55
+    const roofLow = ctx.createBiquadFilter()
+    roofLow.type = 'lowpass'
+    roofLow.frequency.value = 900
+    roofLow.Q.value = 0.5
+    this.roof = ctx.createGain()
+    this.roof.gain.value = 0
+    roofSrc.connect(roofLow).connect(this.roof).connect(ctx.destination)
+    roofSrc.start()
+
+    // Bees: a low buzz, faded in while they are working the flowers.
+    const bee = ctx.createOscillator()
+    bee.type = 'sawtooth'
+    bee.frequency.value = 205
+    const wob = ctx.createOscillator()
+    wob.frequency.value = 0.3
+    const wobGain = ctx.createGain()
+    wobGain.gain.value = 6
+    wob.connect(wobGain).connect(bee.frequency)
+    const beeLow = ctx.createBiquadFilter()
+    beeLow.type = 'lowpass'
+    beeLow.frequency.value = 700
+    beeLow.Q.value = 0.5
+    this.hum = ctx.createGain()
+    this.hum.gain.value = 0
+    bee.connect(beeLow).connect(this.hum).connect(ctx.destination)
+    bee.start()
+    wob.start()
   }
 
-  setBreeze(on: boolean) {
+  /** The player's breeze, plus how windy the day is (0 to 1: a storm is 1). */
+  setBreeze(on: boolean, weather = this.weatherWind) {
+    this.weatherWind = weather
     if (!this.ctx || !this.wind) return
-    this.wind.gain.setTargetAtTime(on ? T.audio.windGain : 0, this.ctx.currentTime, T.audio.rainFade / 3)
+    const level = Math.max(on ? 1 : 0, weather)
+    this.wind.gain.setTargetAtTime(level * T.audio.windGain, this.ctx.currentTime, T.audio.rainFade / 3)
   }
 
-  /** 0 to 1: the cloud's shower counts as 1, a rainy day as much as it is raining. */
-  setRaining(level: number) {
+  /**
+   * 0 to 1: the cloud's shower counts as 1, a rainy day as much as it is raining.
+   * `roof` and `pond` are how much of it falls on the roofs and on the pond.
+   */
+  setRaining(level: number, roof = level, pond = 0) {
     if (!this.ctx || !this.rain) return
-    this.rain.gain.setTargetAtTime(level * T.audio.rainGain, this.ctx.currentTime, T.audio.rainFade / 3)
+    const now = this.ctx.currentTime
+    this.rain.gain.setTargetAtTime(level * T.audio.rainGain, now, T.audio.rainFade / 3)
+    this.roof?.gain.setTargetAtTime(roof * T.audio.roofGain, now, T.audio.rainFade / 3)
+    this.pondRain = pond
+  }
+
+  /** 0 to 1: how many bees are busy in the flowers. */
+  setBees(level: number) {
+    if (!this.ctx || !this.hum) return
+    this.hum.gain.setTargetAtTime(level * T.audio.beeGain, this.ctx.currentTime, 1)
   }
 
   /**
    * Called every frame with who is about. Songs and croaks are scheduled at
    * random, at a rate set by how many birds and frogs there are.
    */
-  ambience(dt: number, birds: number, frogs: number, crickets: number) {
+  ambience(dt: number, birds: number, frogs: number, crickets: number, dawn = 0) {
     const ctx = this.ctx
     if (!ctx) return
     const A = T.audio
-    if (Math.random() < birds * A.songRate * dt) this.song()
+    // At dawn every bird sings at once.
+    if (Math.random() < birds * A.songRate * (1 + dawn * A.dawnChorus) * dt) this.song()
+    // Drops on the pond: little plips.
+    if (Math.random() < this.pondRain * A.plipRate * dt) this.plip()
     if (Math.random() < frogs * A.croakRate * dt) this.croak()
     this.crickets?.gain.setTargetAtTime(crickets * A.cricketGain, ctx.currentTime, 1.5)
   }
@@ -234,6 +292,112 @@ export class Sound {
     g.gain.exponentialRampToValueAtTime(0.0001, now + len)
     src.connect(low).connect(g).connect(ctx.destination)
     src.start(now)
+  }
+
+  /** A burst of filtered noise: the building block of most small sounds here. */
+  private burst(at: number, type: BiquadFilterType, freq: number, gain: number, len: number, attack = 0.005, q = 0.7) {
+    const ctx = this.ctx!
+    const src = ctx.createBufferSource()
+    src.buffer = this.noise!
+    const f = ctx.createBiquadFilter()
+    f.type = type
+    f.frequency.value = freq
+    f.Q.value = q
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0, at)
+    g.gain.linearRampToValueAtTime(gain, at + attack)
+    g.gain.exponentialRampToValueAtTime(0.0001, at + len)
+    const pan = ctx.createStereoPanner()
+    pan.pan.value = Math.random() * 1.2 - 0.6
+    src.connect(f).connect(g).connect(pan).connect(ctx.destination)
+    src.start(at, Math.random() * 1.5)
+    src.stop(at + len + 0.05)
+  }
+
+  /** A short tone. */
+  private blip(at: number, type: OscillatorType, from: number, to: number, gain: number, len: number) {
+    const ctx = this.ctx!
+    const o = ctx.createOscillator()
+    o.type = type
+    o.frequency.setValueAtTime(from, at)
+    o.frequency.exponentialRampToValueAtTime(to, at + len)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0, at)
+    g.gain.linearRampToValueAtTime(gain, at + 0.008)
+    g.gain.exponentialRampToValueAtTime(0.0001, at + len)
+    o.connect(g).connect(ctx.destination)
+    o.start(at)
+    o.stop(at + len + 0.02)
+  }
+
+  private plip() {
+    const now = this.ctx!.currentTime
+    const f = 900 + Math.random() * 900
+    this.blip(now, 'sine', f, f * 1.8, T.audio.plipGain, 0.06)
+  }
+
+  /** The animals and the people: one call per thing that happens. */
+  play(name: string) {
+    const ctx = this.ctx
+    if (!ctx || !this.noise) return
+    const now = ctx.currentTime
+    const A = T.audio
+    switch (name) {
+      case 'thump': // A rabbit stamps a warning as it goes in.
+        this.burst(now, 'lowpass', 160, A.thumpGain, 0.12, 0.002)
+        this.burst(now + 0.18, 'lowpass', 160, A.thumpGain * 0.8, 0.12, 0.002)
+        break
+      case 'snort': // A deer blows through its nose.
+        this.burst(now, 'bandpass', 700, A.snortGain, 0.35, 0.02)
+        break
+      case 'chatter': // Squirrels scolding: quick dry clicks.
+        for (let i = 0; i < 7; i++) this.burst(now + i * 0.055, 'bandpass', 3200, A.chatterGain, 0.035, 0.002, 1)
+        break
+      case 'snuffle': // The hedgehog.
+        for (let i = 0; i < 4; i++) this.burst(now + i * 0.13 + Math.random() * 0.04, 'bandpass', 1100, A.snuffleGain, 0.08, 0.01)
+        break
+      case 'cheep': // Chicks in the nest.
+        for (let i = 0; i < 3; i++) this.blip(now + i * 0.1, 'sine', 4200, 5200, A.cheepGain, 0.05)
+        break
+      case 'quack':
+        for (let i = 0; i < 2; i++) {
+          const t = now + i * 0.22
+          this.blip(t, 'sawtooth', 380, 300, A.quackGain, 0.14)
+          this.burst(t, 'bandpass', 1100, A.quackGain * 0.4, 0.12)
+        }
+        break
+      case 'honk':
+        this.honk()
+        break
+      case 'flutter':
+        this.flutter()
+        break
+      case 'door': // The back door: a latch, then the door against its frame.
+        this.burst(now, 'bandpass', 2400, A.doorGain * 0.6, 0.04, 0.002, 1)
+        this.burst(now + 0.5, 'lowpass', 300, A.doorGain, 0.2, 0.004)
+        break
+      case 'cup': // Cup on saucer.
+        this.blip(now, 'sine', 2900, 2850, A.cupGain, 0.25)
+        this.blip(now, 'sine', 4700, 4600, A.cupGain * 0.5, 0.15)
+        break
+      case 'shovel': // Scrape, and snow thrown aside.
+        this.burst(now, 'bandpass', 1800, A.shovelGain, 0.35, 0.05, 0.5)
+        this.burst(now + 0.45, 'lowpass', 600, A.shovelGain * 0.6, 0.25, 0.03)
+        break
+      case 'peg':
+      case 'unpeg': // A wooden peg's click.
+        this.burst(now, 'bandpass', 2600, A.pegGain, 0.03, 0.001, 1)
+        break
+      case 'snap': // A sheet cracking in the wind.
+        this.burst(now, 'bandpass', 900, A.snapGain, 0.12, 0.004, 0.5)
+        break
+      case 'footsteps':
+        for (let i = 0; i < 4; i++) this.burst(now + i * 0.42, 'lowpass', 500, A.stepGain, 0.08, 0.005)
+        break
+      case 'pat': // Patting the snowman into shape.
+        this.burst(now, 'lowpass', 700, A.stepGain * 1.4, 0.1, 0.004)
+        break
+    }
   }
 
   bloom() {

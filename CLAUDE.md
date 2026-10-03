@@ -83,6 +83,21 @@ three.js, Vite, vitest. Concept and plan: `/mnt/project-files/weather-game/conce
   upward faces; `foliage` turns in autumn and goes bare (discard) in winter.
 - Tests build gardens with `{ still: true }` (clear summer, no drifting clouds)
   so each sees only what it sets up. Climate tests use their own seeded random.
+- **Rose and Walter (Rick, 2026-10-03)** live in `sim/people.ts`: a task queue
+  each, re-planned from the weather when it empties, dropped when the weather
+  turns (rain on the washing, storm, downpour, night). Rose does the washing on
+  `T.wash`'s line and rescues it when rain starts; a sheet she can't reach in
+  `rescueFor` seconds stays out dripping. Walk routes go through `detour()` so
+  nobody crosses the bed or the pond; a test checks it. They emit sounds through
+  `Hooks.onSound`; `render/people.ts` only poses them by `doing` and `carry`.
+- **Animals live here (Rick, 2026-10-03).** `sim/habitat.ts` holds each
+  species' count, mode and young; nothing ever leaves for good, they only hide.
+  Young come once a year (`habitat.year` turns winter to spring). The renderer
+  (`render/wildlife.ts`, builders in `render/critters.ts`) decides positions.
+  Footprints in snow are `render/tracks.ts`. The shared `leg` geometry hangs
+  down from its origin and `cone` points along +z; props want `rod`/`peak`.
+- Sound effects only, no music: Rick's call. Every new creature or chore gets a
+  `Sound.play(name)` case.
 - `sim/wildlife.ts` says how many of each visitor are about; `render/wildlife.ts`
   decides where they wander and keeps shy ones out of the player's rain.
   Critters are drawn larger than life (`T.render.critterSize`) because a

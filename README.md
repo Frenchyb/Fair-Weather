@@ -16,7 +16,14 @@ You are the weather over a back garden. Steer the cloud with the mouse and:
 Round the player's cloud the garden keeps its own weather and seasons:
 drifting clouds cast moving shade, a rainy day waters everything a little,
 autumn drops leaves the breeze can blow about, winter rests the plants under
-snow. Birds, rabbits, frogs, ducks, deer and geese come and go with it.
+snow.
+
+Rose and Walter live in the house. They take tea in the sun, hang out the
+washing (and run to fetch it when you rain on it), watch a downpour from the
+window, walk with a lantern in the fog, build a snowman, pick what you grow
+and cut flowers for the vase. Rabbits, birds, deer, frogs, bees, a hedgehog
+and squirrels live in the garden too, each with a home, a weather routine and,
+if you look after the place, young in the spring. Ducks and geese visit.
 
     npm install
     npm run dev        # play at http://localhost:5173

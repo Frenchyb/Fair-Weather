@@ -17,6 +17,8 @@ import { CloudView } from './cloud'
 import { DriftView } from './drift'
 import { Precip } from './precip'
 import { WildlifeView } from './wildlife'
+import { PeopleView } from './people'
+import { Tracks } from './tracks'
 import { Effects } from './effects'
 import { GroundView } from './ground'
 import { Horizon } from './horizon'
@@ -91,6 +93,8 @@ export class GardenScene {
   private precip: Precip
   /** Visitors; `main` listens to their events for sound. */
   readonly wildlife: WildlifeView
+  readonly people: PeopleView
+  private tracks: Tracks
   private ray = new THREE.Raycaster()
   private dist = 20
   private gust = 0
@@ -122,7 +126,9 @@ export class GardenScene {
     this.cloud = new CloudView(s)
     this.drift = new DriftView(s)
     this.precip = new Precip(s)
-    this.wildlife = new WildlifeView(s)
+    this.tracks = new Tracks(s)
+    this.wildlife = new WildlifeView(s, this.tracks)
+    this.people = new PeopleView(s, this.tracks)
 
     for (const p of garden.plants) {
       const view = new PlantView(p.kind)
@@ -360,10 +366,13 @@ export class GardenScene {
     this.drift.update(garden, this.camera)
     this.precip.update(garden, this.focus, dt)
     this.wildlife.update(garden, dt)
+    this.people.update(garden, dt)
+    this.tracks.update(garden, dt)
     this.ground.update(garden, dt)
     this.horizon.update(t, dt, mix.overcast + mix.rain + mix.snow, look.winter)
     this.world.setWinter(look.winter)
-    this.world.setNight(night)
+    // Lit windows at night, and a glow when someone is in watching the weather.
+    this.world.setNight(night, this.people.watching(garden))
     this.world.fadeOak(c.x, c.z, dt)
 
     garden.plants.forEach((p, i) => {
@@ -482,7 +491,7 @@ export class GardenScene {
   private updateBees(garden: Garden) {
     const t = garden.time
     const per = T.render.beesPerPlant
-    const awake = garden.daylight > 0.4 && !garden.storming
+    const awake = garden.habitat.bees.mode === 'busy'
     garden.plants.forEach((p, i) => {
       const bloomed = p.growth >= 1 && awake
       const top = this.plants[i].top
