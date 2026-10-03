@@ -169,6 +169,59 @@ export const T = {
     gust: 0.9,
   },
 
+  /** The weather over the whole garden, and the seasons. */
+  climate: {
+    /** Seconds for one weather to blend into the next. */
+    blend: 10,
+    /** On its own the weather changes every so often (seconds, min and max). */
+    changeEvery: [80, 150] as [number, number],
+    /** Sunlight let through by each kind of day. */
+    light: { clear: 1, overcast: 0.66, rain: 0.58, fog: 0.62, snow: 0.6 },
+    /** A rainy day waters every plant this much per second, never past what it likes. */
+    rainSoak: 0.006,
+    /** ...wets the ground and slowly greens the lawn. */
+    rainWet: 0.02,
+    rainGreen: 0.004,
+    /** Fog damps every plant towards `T.fog.target` at this rate. */
+    fogDamp: 0.006,
+    /** Which weather each season tends to, when left to itself. */
+    tends: {
+      spring: { clear: 0.35, overcast: 0.25, rain: 0.3, fog: 0.1, snow: 0 },
+      summer: { clear: 0.6, overcast: 0.15, rain: 0.2, fog: 0.05, snow: 0 },
+      autumn: { clear: 0.3, overcast: 0.3, rain: 0.25, fog: 0.15, snow: 0 },
+      winter: { clear: 0.3, overcast: 0.25, rain: 0, fog: 0.1, snow: 0.35 },
+    },
+    /** Drifting clouds: how many for each kind of day, and how fast they go (m/s). */
+    clouds: { clear: 4, overcast: 14, rain: 14, fog: 0, snow: 12, speed: 1.4, height: [15, 21] as [number, number] },
+    /** How much a drifting cloud dims the ground under it on a clear day. */
+    cloudShade: 0.5,
+  },
+
+  seasons: {
+    /** Seconds each season lasts on its own: one day and night. */
+    length: 240,
+    /** Seconds for one season's look to blend into the next. */
+    blend: 25,
+    /** Growth speed in each season. Winter is a rest: nothing grows, nothing is lost. */
+    growth: { spring: 1.15, summer: 1, autumn: 0.6, winter: 0 },
+    /** Soil dries this much faster or slower than the base rate. */
+    drying: { spring: 0.9, summer: 1, autumn: 0.7, winter: 0.3 },
+  },
+
+  /** Snow and fallen leaves, which settle on the ground and go in their own time. */
+  cover: {
+    /** Snow depth added per second of snowy weather, 0 bare to 1 deep. */
+    snowRate: 0.01,
+    /** ...and how fast it melts: in winter sunshine, and in any other season. */
+    meltWinter: 0.002,
+    meltWarm: 0.02,
+    /** Leaf fall per second near trees in autumn. */
+    leafFall: 0.006,
+    leafReach: 3.5,
+    /** Leaves rot down out of autumn at this rate. */
+    leafRot: 0.002,
+  },
+
   rainbow: {
     /** A shower at least this long, in daylight, leaves a rainbow behind. */
     minShower: 2.5,

@@ -29,6 +29,10 @@ export class Ground {
   /** Which way the grass is laid over, and how far (length up to 1). */
   readonly bendX: Float32Array
   readonly bendZ: Float32Array
+  /** Snow lying on the ground, 0 bare to 1 deep. */
+  readonly snow: Float32Array
+  /** Fallen leaves, 0 none to 1 a thick drift. */
+  readonly leaves: Float32Array
   /** 1 where grass grows: not paving, the bed or the pond. */
   readonly lawn: Uint8Array
   /** 1 where water can stand on the surface (everything but the pond). */
@@ -42,6 +46,8 @@ export class Ground {
     this.wet = new Float32Array(n)
     this.bendX = new Float32Array(n)
     this.bendZ = new Float32Array(n)
+    this.snow = new Float32Array(n)
+    this.leaves = new Float32Array(n)
     this.lawn = new Uint8Array(n)
     this.dryLand = new Uint8Array(n)
     let lawnCells = 0
@@ -78,6 +84,23 @@ export class Ground {
   wetAt(x: number, z: number) {
     const k = this.index(x, z)
     return k < 0 ? 0 : this.wet[k]
+  }
+
+  snowAt(x: number, z: number) {
+    const k = this.index(x, z)
+    return k < 0 ? 0 : this.snow[k]
+  }
+
+  leavesAt(x: number, z: number) {
+    const k = this.index(x, z)
+    return k < 0 ? 0 : this.leaves[k]
+  }
+
+  /** Average snow over the whole yard. */
+  get snowCover() {
+    let s = 0
+    for (let k = 0; k < this.snow.length; k++) s += this.snow[k]
+    return s / this.snow.length
   }
 
   /** Share of the lawn that is properly green. */
@@ -128,6 +151,65 @@ export class Ground {
       }
     })
     return greened
+  }
+
+  /** Snow over a soft-edged disc, as from the cloud in winter. */
+  snowOn(cx: number, cz: number, radius: number, soft: number, amount: number) {
+    this.disc(cx, cz, radius + soft / 2, (k, d) => {
+      if (!this.dryLand[k]) return
+      const cover = 1 - smoothstep(radius - soft / 2, radius + soft / 2, d)
+      this.snow[k] = Math.min(1, this.snow[k] + T.cover.snowRate * 6 * amount * cover)
+    })
+  }
+
+  /**
+   * The day's weather over the whole yard: rain wets the ground and slowly
+   * greens the lawn, snow settles, and leaves come down round the trees in
+   * autumn. `melt` is snow lost per second; meltwater soaks the ground.
+   */
+  weather(dt: number, rain: number, snow: number, melt: number, leafFall: number, trees: { x: number; z: number }[]) {
+    const C = T.climate
+    const V = T.cover
+    for (let k = 0; k < this.wet.length; k++) {
+      if (!this.dryLand[k]) continue
+      if (rain > 0) {
+        this.wet[k] = Math.min(T.ground.maxWet, this.wet[k] + C.rainWet * rain * dt)
+        if (this.lawn[k]) this.green[k] = Math.min(1, this.green[k] + C.rainGreen * rain * dt)
+      }
+      if (snow > 0) this.snow[k] = Math.min(1, this.snow[k] + V.snowRate * snow * dt)
+      if (this.snow[k] > 0 && melt > 0) {
+        const m = Math.min(this.snow[k], melt * dt)
+        this.snow[k] -= m
+        this.wet[k] = Math.min(T.ground.maxWet, this.wet[k] + m * 0.6)
+      }
+      // Leaves rot down out of autumn, and faster in the wet.
+      if (leafFall <= 0 && this.leaves[k] > 0) this.leaves[k] = Math.max(0, this.leaves[k] - V.leafRot * dt)
+    }
+    if (leafFall > 0) {
+      for (const t of trees) {
+        this.disc(t.x, t.z, V.leafReach, (k, d) => {
+          if (!this.lawn[k] && !this.dryLand[k]) return
+          const near = 1 - smoothstep(V.leafReach * 0.3, V.leafReach, d)
+          this.leaves[k] = Math.min(1, this.leaves[k] + V.leafFall * leafFall * near * dt)
+        })
+      }
+    }
+  }
+
+  /** The breeze pushes fallen leaves downwind, so they drift into piles. */
+  blowLeaves(cx: number, cz: number, reach: number, wx: number, wz: number, amount: number) {
+    const di = Math.abs(wx) > Math.abs(wz) ? Math.sign(wx) : 0
+    const dj = di === 0 ? Math.sign(wz) : 0
+    const step = di + dj * this.cols
+    this.disc(cx, cz, reach, (k, d) => {
+      const to = k + step
+      if (this.leaves[k] <= 0 || to < 0 || to >= this.leaves.length || !this.dryLand[to]) return
+      const s = Math.min(this.leaves[k], this.leaves[k] * amount * (1 - smoothstep(reach * 0.5, reach, d)))
+      const room = 1 - this.leaves[to]
+      const moved = Math.min(s, room)
+      this.leaves[k] -= moved
+      this.leaves[to] += moved
+    })
   }
 
   /** Lay the grass over along the wind, strongest near the middle. */

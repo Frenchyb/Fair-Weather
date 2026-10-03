@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { Garden, comfortIn, onBed, stageOf, type Controls, type Plant } from '../src/sim/garden'
+import { Garden as LiveGarden, comfortIn, onBed, stageOf, type Controls, type Hooks, type Plant } from '../src/sim/garden'
+
+/** The garden under a still, clear summer sky, so each test sees only what it sets up. */
+class Garden extends LiveGarden {
+  constructor(hooks: Hooks = {}) {
+    super(hooks, { still: true })
+  }
+}
+import { Climate } from '../src/sim/climate'
 import { WISHES } from '../src/sim/journal'
-import { daylight, shadowOf } from '../src/sim/sky'
+import { dayProgress, daylight, shadowOf } from '../src/sim/sky'
 import { T } from '../src/tuning'
 
 const DT = 1 / 30
@@ -19,6 +27,16 @@ function parkOver(g: Garden, x: number, z: number) {
 }
 
 const idle: Controls = { target: null, rain: false }
+const KINDS = T.kinds
+/** A small seeded random, so climate tests repeat. */
+function mulberry(a: number) {
+  return () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
 const kind = (g: Garden, k: Plant['kind']) => g.plants.find((p) => p.kind === k)!
 /** Bed plant in the middle row, second column: all four neighbours are in the bed. */
 const middle = (g: Garden) => g.plants[5]
@@ -580,5 +598,180 @@ describe('a whole garden', () => {
   it('every journal entry has its own id', () => {
     const ids = new Set(WISHES.map((w) => w.id))
     expect(ids.size).toBe(WISHES.length)
+  })
+})
+
+describe('the climate', () => {
+  it('changes the weather on its own, and holds still once you pick one', () => {
+    const c = new Climate(mulberry(3))
+    const seen = new Set<string>()
+    for (let t = 0; t < 1500; t += 1) {
+      c.update(1)
+      seen.add(c.weather)
+    }
+    expect(seen.size).toBeGreaterThanOrEqual(3)
+    c.setWeather('fog')
+    for (let t = 0; t < 1500; t += 1) c.update(1)
+    expect(c.weather).toBe('fog')
+    expect(c.mix.fog).toBeGreaterThan(0.99)
+  })
+
+  it('eases from one weather into the next rather than snapping', () => {
+    const c = new Climate(mulberry(1))
+    c.setWeather('clear')
+    for (let i = 0; i < 100; i++) c.update(1)
+    c.setWeather('rain')
+    c.update(1)
+    expect(c.rainfall).toBeGreaterThan(0)
+    expect(c.rainfall).toBeLessThan(0.2)
+    for (let i = 0; i < 60; i++) c.update(1)
+    expect(c.rainfall).toBeGreaterThan(0.95)
+  })
+
+  it('turns through all four seasons, and winter brings snow instead of rain', () => {
+    const c = new Climate(mulberry(5))
+    c.setWeather('rain')
+    c.setWeather('auto')
+    for (let t = 0; t < T.seasons.length * 4 + 10; t += 1) c.update(1)
+    expect(c.seen.size).toBe(4)
+    const w = new Climate(mulberry(5))
+    w.setWeather('rain')
+    w.setSeason('winter')
+    for (let t = 0; t < 600; t += 1) w.update(1)
+    // Pinned rain stays rain even in winter: the player asked for it.
+    expect(w.weather).toBe('rain')
+    w.setWeather('auto')
+    for (let t = 0; t < 2000; t += 1) {
+      w.update(1)
+      expect(w.weather).not.toBe('rain')
+    }
+  })
+
+  it('drifting clouds shade the ground only on a clear day, and move on the wind', () => {
+    const c = new Climate(mulberry(2))
+    c.setWeather('clear')
+    for (let i = 0; i < 60; i++) c.update(1)
+    const cl = c.clouds.find((k) => k.fade > 0.9)!
+    expect(cl).toBeTruthy()
+    expect(c.shadeAt(cl.x, cl.z)).toBeLessThan(0.7)
+    const x0 = cl.x
+    c.update(1)
+    expect(cl.x).toBeGreaterThan(x0)
+    c.setWeather('overcast')
+    for (let i = 0; i < 80; i++) c.update(1)
+    for (const k of c.clouds) expect(c.shadeAt(k.x, k.z)).toBeGreaterThan(0.95)
+  })
+})
+
+describe('weather over the whole garden', () => {
+  it('an overcast day dims the light everywhere', () => {
+    const g = new Garden()
+    run(g, 20, idle)
+    const sunny = g.lightAt(4, 4)
+    run(g, 60, { ...idle, weather: 'overcast' })
+    expect(g.lightAt(4, 4)).toBeLessThan(sunny * 0.75)
+  })
+
+  it('a rainy day waters every plant, but never past what each one likes', () => {
+    const g = new Garden()
+    for (const p of g.plants) p.moisture = 0.05
+    run(g, 1, { ...idle, weather: 'rain' })
+    run(g, 400, idle)
+    for (const p of g.plants) {
+      const kind = KINDS[p.kind]
+      expect(p.moisture).toBeGreaterThan(0.1)
+      expect(p.moisture).toBeLessThanOrEqual(kind.moisture[1] + 1e-6)
+    }
+  })
+
+  it('a rainy day wets and slowly greens the whole lawn', () => {
+    const g = new Garden()
+    const before = g.ground.green.slice()
+    run(g, 1, { ...idle, weather: 'rain' })
+    run(g, 120, idle)
+    let k = g.ground.index(T.yard.x0 + 3, T.yard.z1 - 3)
+    expect(g.ground.green[k]).toBeGreaterThan(before[k] + 0.2)
+    expect(g.ground.wet[k]).toBeGreaterThan(0.3)
+  })
+
+  it('in winter plants rest and ask for nothing, and growth never goes backwards', () => {
+    const g = new Garden()
+    run(g, 1, { ...idle, season: 'winter' })
+    run(g, 60, idle)
+    const grown = g.plants.map((p) => p.growth)
+    for (const p of g.plants) p.moisture = 0
+    run(g, 200, idle)
+    g.plants.forEach((p, i) => {
+      expect(p.growth).toBe(grown[i])
+      expect(p.need).toBeNull()
+    })
+  })
+
+  it('snow settles in winter, and melts into wet ground when spring comes', () => {
+    const g = new Garden()
+    run(g, 1, { ...idle, season: 'winter', weather: 'snow' })
+    run(g, 200, idle)
+    expect(g.ground.snowCover).toBeGreaterThan(0.5)
+    run(g, 1, { ...idle, season: 'spring', weather: 'clear' })
+    run(g, 200, idle)
+    expect(g.ground.snowCover).toBeLessThan(0.05)
+  })
+
+  it('the cloud snows in winter instead of raining', () => {
+    const g = new Garden()
+    run(g, 1, { ...idle, season: 'winter' })
+    run(g, 40, idle)
+    parkOver(g, 3, 4)
+    run(g, 10, { target: { x: 3, z: 4 }, rain: true })
+    expect(g.ground.snowAt(3, 4)).toBeGreaterThan(0.2)
+  })
+
+  it('leaves fall round the trees in autumn, and the breeze moves them on', () => {
+    const g = new Garden()
+    run(g, 1, { ...idle, season: 'autumn' })
+    run(g, 120, idle)
+    const under = g.ground.leavesAt(T.oak.x + 1, T.oak.z + 1)
+    expect(under).toBeGreaterThan(0.2)
+    expect(g.ground.leavesAt(0, 0)).toBe(0)
+    // Blowing moves leaves downwind without making or losing any.
+    const ground = g.ground
+    const total = () => ground.leaves.reduce((a, b) => a + b, 0)
+    const sum = total()
+    const k = ground.index(T.oak.x + 1, T.oak.z + 1)
+    const was = ground.leaves[k]
+    ground.blowLeaves(T.oak.x, T.oak.z, 4, 1, 0, 0.5)
+    expect(ground.leaves[k]).not.toBeCloseTo(was, 3)
+    expect(total()).toBeCloseTo(sum, 3)
+  })
+})
+
+describe('wildlife', () => {
+  it('rabbits come once the lawn is green, and keep away in the rain', () => {
+    const g = new Garden()
+    run(g, 20, idle)
+    expect(g.visitors.rabbits).toBe(0)
+    for (let k = 0; k < g.ground.green.length; k++) if (g.ground.lawn[k]) g.ground.green[k] = 0.9
+    run(g, 3, idle)
+    expect(g.visitors.rabbits).toBeGreaterThan(0)
+    expect(g.visitors.birds).toBeGreaterThan(0)
+    run(g, 60, { ...idle, weather: 'rain' })
+    expect(g.visitors.rabbits).toBe(0)
+    expect(g.visitors.frogs).toBeGreaterThan(0)
+  })
+
+  it('geese go over in autumn, and deer only come at dawn and dusk', () => {
+    const g = new Garden()
+    run(g, 1, { ...idle, season: 'autumn' })
+    run(g, 60, idle)
+    expect(g.visitors.geese).toBe(true)
+    let deerByDay = 0
+    let deerAtDusk = 0
+    run(g, T.day.length + T.day.night, (gg) => {
+      const p = dayProgress(gg.time)
+      if (gg.visitors.deer) p > 0.25 && p < 0.75 ? deerByDay++ : deerAtDusk++
+      return idle
+    })
+    expect(deerByDay).toBe(0)
+    expect(deerAtDusk).toBeGreaterThan(0)
   })
 })

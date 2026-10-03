@@ -7,9 +7,11 @@
  * the right (east) and z towards the viewer (south).
  */
 import { T, type KindName } from '../tuning'
+import { Climate, type Season, type WeatherKind } from './climate'
 import { Ground } from './ground'
 import { WISHES, type WishId } from './journal'
 import { daylight, shadowOf } from './sky'
+import { visitors, type Visitors } from './wildlife'
 
 export type Need = 'thirsty' | 'soggy' | 'wants-sun' | 'wants-shade'
 export type Stage = 'seed' | 'sprout' | 'leafy' | 'flowering' | 'bloom'
@@ -123,6 +125,9 @@ export interface Controls {
   spread?: number
   /** True for the one step in which the storm is called. */
   storm?: boolean
+  /** Set the day's weather, or hand it back to the climate. One step only. */
+  weather?: WeatherKind | 'auto'
+  season?: Season | 'auto'
 }
 
 export type StrikeRefusal = 'too-little-water' | 'too-spread' | 'too-soon'
@@ -196,6 +201,14 @@ export class Garden {
   readonly marks: Mark[] = []
   readonly ground: Ground
   readonly storm: Storm = { charge: T.storm.start, left: 0, nextStrike: 0 }
+  readonly climate: Climate
+  /** Who is visiting right now. */
+  visitors: Visitors = { birds: 0, rabbits: 0, frogs: 0, ducks: 0, deer: 0, geese: false }
+  /** Share of the lawn properly green, refreshed every step. */
+  greenShare = 0
+  /** Where leaves come down in autumn: the oak, the orchard, the hedge. */
+  private trees: { x: number; z: number }[] = []
+  private visitClock = 0
   rainbow: Rainbow | null = null
   strike: Strike | null = null
   time = 0
@@ -204,7 +217,14 @@ export class Garden {
   private sinceStrike = Infinity
   private wasDay = true
 
-  constructor(private hooks: Hooks = {}) {
+  /**
+   * `still` keeps the weather clear and the season at summer with no drifting
+   * clouds, so a test sees only what it sets up.
+   */
+  constructor(
+    private hooks: Hooks = {},
+    options: { still?: boolean } = {},
+  ) {
     for (const p of plantings()) {
       this.plants.push({
         ...p,
@@ -235,8 +255,15 @@ export class Garden {
       windX: 1,
       windZ: 0,
     }
-    for (const p of this.plants) this.assess(p, 1)
     this.ground = new Ground(() => this.random())
+    this.climate = new Climate(() => this.random(), options.still)
+    for (const p of this.plants) this.assess(p, 1)
+    this.trees = [
+      { x: T.oak.x, z: T.oak.z },
+      ...T.plantings.filter((p) => p.kind === 'apple'),
+      ...Array.from({ length: 10 }, (_, i) => ({ x: T.yard.x0 + 2 + i * 3.8, z: T.yard.z0 + 0.5 })),
+    ]
+    this.greenShare = this.ground.greenShare
   }
 
   get storming() {
@@ -289,7 +316,8 @@ export class Garden {
     const d = Math.hypot(x - s.x, z - s.z)
     const r = T.oak.crownRadius
     const oak = 1 - (1 - smoothstep(r * 0.6, r * 1.2, d)) * (1 - T.oak.shadeLight)
-    return this.daylight * Math.min(cloud, oak)
+    const sky = this.climate.skyLight * this.climate.shadeAt(x, z)
+    return this.daylight * sky * Math.min(cloud, oak)
   }
 
   /** How strongly the breeze is blowing at a point: 1 near the cloud, 0 well clear. */
@@ -326,6 +354,9 @@ export class Garden {
 
   update(dt: number, controls: Controls) {
     this.time += dt
+    if (controls.weather) this.climate.setWeather(controls.weather)
+    if (controls.season) this.climate.setSeason(controls.season)
+    this.climate.update(dt)
     this.sinceStrike += dt
     const day = this.daylight
     const isDay = day > 0.5
@@ -353,12 +384,45 @@ export class Garden {
     if (this.wildflowers.length >= 60) this.wish('meadow')
     if (this.ground.deepestPuddle > 0.15) this.wish('puddle')
     if (this.marks.some((m) => m.age > T.lightning.ringAfter)) this.wish('fairy-ring')
-    if (this.ground.greenShare >= 0.5) this.wish('green-half')
+    this.greenShare = this.ground.greenShare
+    if (this.greenShare >= 0.5) this.wish('green-half')
+    const cl = this.climate
+    if (cl.mix.rain > 0.9) this.wish('rainy-day')
+    if (this.ground.snowCover > 0.4) this.wish('snow')
+    if (c.breezing && cl.look.autumn > 0.5) this.wish('leaves')
+    if (cl.seen.size === 4) this.wish('four-seasons')
+    this.visitClock -= dt
+    if (this.visitClock <= 0) {
+      this.visitClock = 1
+      this.lookForVisitors()
+    }
     if (!this.fullBloom && this.plants.every((p) => p.growth >= 1)) {
       this.fullBloom = true
       this.wish('all')
       this.hooks.onFullBloom?.()
     }
+  }
+
+  private lookForVisitors() {
+    const g = this.ground
+    let wet = 0
+    for (let k = 0; k < g.wet.length; k++) if (g.lawn[k]) wet += Math.min(1, g.wet[k])
+    const c = this.cloud
+    this.visitors = visitors({
+      time: this.time,
+      daylight: this.daylight,
+      climate: this.climate,
+      greenShare: this.greenShare,
+      wetness: wet / g.lawnCells,
+      snowCover: g.snowCover,
+      storming: this.storming,
+      rainOnPond: c.raining && Math.hypot(c.x - T.pond.x, c.z - T.pond.z) < T.pond.radius + this.radius,
+    })
+    const v = this.visitors
+    if (v.rabbits > 0) this.wish('rabbits')
+    if (v.frogs > 0) this.wish('frogs')
+    if (v.deer > 0) this.wish('deer')
+    if (v.geese) this.wish('geese')
   }
 
   private wish(id: WishId) {
@@ -535,7 +599,10 @@ export class Garden {
     const g = this.ground
     const c = this.cloud
     let greened = 0
-    if (c.raining) greened += g.rain(c.x, c.z, this.radius, this.softEdge, this.rainIntensity * dt)
+    const cl = this.climate
+    // In winter the cloud snows.
+    if (c.raining && cl.dormant) g.snowOn(c.x, c.z, this.radius, this.softEdge, this.rainIntensity * dt)
+    else if (c.raining) greened += g.rain(c.x, c.z, this.radius, this.softEdge, this.rainIntensity * dt)
     if (this.storming) {
       const S = T.storm
       g.rain(c.x, c.z, S.radius, S.softEdge, S.rain * dt)
@@ -543,8 +610,12 @@ export class Garden {
     }
     if (c.breezing) {
       g.blow(c.x, c.z, this.radius + T.wind.reach, c.windX, c.windZ, T.ground.bendRate * dt)
+      g.blowLeaves(c.x, c.z, this.radius + T.wind.reach, c.windX, c.windZ, 1.5 * dt)
     }
-    g.settle(dt, this.daylight)
+    const V = T.cover
+    const melt = (cl.dormant ? V.meltWinter * this.daylight : V.meltWarm) * (1 - cl.snowfall)
+    g.weather(dt, cl.rainfall, cl.snowfall, melt, cl.look.autumn, this.trees)
+    g.settle(dt, this.daylight * cl.skyLight)
     this.charge(greened * T.storm.perGreen)
   }
 
@@ -560,12 +631,18 @@ export class Garden {
     const cover = this.coverage(p.x, p.z)
     const light = this.lightAt(p.x, p.z)
     const s = T.soil
-    let dm = -(s.baseDry + s.sunDry * light) * dt
+    const cl = this.climate
+    let dm = -(s.baseDry + s.sunDry * light) * cl.drying * dt
     if (this.cloud.raining) dm += s.rainRate * this.rainIntensity * cover * dt
     if (this.cloud.fogging && p.moisture < T.fog.target) {
       dm += Math.min(T.fog.target - p.moisture, T.fog.rate * cover * dt)
     }
     p.moisture = clamp(p.moisture + dm, 0, 1)
+    // A rainy or foggy day looks after everyone a little, but never past what each plant likes.
+    const top = kind.moisture[1]
+    if (cl.rainfall > 0 && p.moisture < top) p.moisture = Math.min(top, p.moisture + T.climate.rainSoak * cl.rainfall * dt)
+    const damp = Math.min(T.fog.target, top)
+    if (cl.fogginess > 0 && p.moisture < damp) p.moisture = Math.min(damp, p.moisture + T.climate.fogDamp * cl.fogginess * dt)
     // Plants judge the light by day only, so night doesn't read as deep shade.
     if (day > 0.5) {
       const daytime = light / day
@@ -584,7 +661,7 @@ export class Garden {
     else if (flowering && kind.pollen) fruiting = T.wind.withoutPollen
     const awake = kind.night ? 1 - day : day
     const rich = 1 + T.lightning.richBoost * p.rich
-    const rate = (p.comfort * (kind.pace ?? 1) * awake * fruiting * rich) / T.secondsToBloom
+    const rate = (p.comfort * (kind.pace ?? 1) * awake * fruiting * rich * cl.growth) / T.secondsToBloom
     p.growth = Math.min(1, p.growth + rate * dt)
     p.rich = Math.max(0, p.rich - dt / T.lightning.richFor)
     p.mood += (p.comfort - p.mood) * (1 - Math.exp(-dt / T.moodLag))
@@ -665,7 +742,7 @@ export class Garden {
     p.comfort = Math.min(lc, mc)
     // Asleep plants ask for nothing; night-bloomers ask only at night.
     const awake = kind.night ? day < 0.5 : day > 0.5
-    if (!awake || p.comfort >= T.showNeedBelow || p.growth >= 1) p.need = null
+    if (!awake || this.climate.dormant || p.comfort >= T.showNeedBelow || p.growth >= 1) p.need = null
     else if (mc <= lc) p.need = p.moisture < kind.moisture[0] ? 'thirsty' : 'soggy'
     else p.need = p.light < kind.light[0] ? 'wants-sun' : 'wants-shade'
   }
