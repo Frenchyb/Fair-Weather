@@ -14,13 +14,16 @@ import { onBed, type Garden, type Plant } from '../sim/garden'
 import { sunDirection } from '../sim/sky'
 import { T } from '../tuning'
 import { CloudView } from './cloud'
+import { DriftView } from './drift'
+import { Precip } from './precip'
+import { WildlifeView } from './wildlife'
 import { Effects } from './effects'
 import { GroundView } from './ground'
 import { Horizon } from './horizon'
 import { needIcons } from './icons'
 import { loadSkyLight, surfaces } from './textures'
 import { PlantView } from './plants'
-import { fieldUniforms, shadeUniforms } from './shade'
+import { fieldUniforms, seasonUniforms, shadeUniforms } from './shade'
 import { WindView } from './wind'
 import { World, lambert } from './world'
 
@@ -36,6 +39,15 @@ const ZENITH_NIGHT = new THREE.Color(0x070b18)
 const HORIZON_NIGHT = new THREE.Color(0x1a2440)
 const HORIZON_DUSK = new THREE.Color(0xf0a070)
 const STORM = new THREE.Color(0x4a525c)
+// A grey day's sky: overcast, then darker for rain, paler and closer for fog.
+const DULL_ZENITH = new THREE.Color(0x7d868f)
+const DULL_HORIZON = new THREE.Color(0xb3b9be)
+const RAIN_ZENITH = new THREE.Color(0x58606a)
+const RAIN_HORIZON = new THREE.Color(0x868e95)
+const FOG_HORIZON = new THREE.Color(0xc4cace)
+const DECK = new THREE.Color(0xa3a9af)
+const RAIN_DECK = new THREE.Color(0x666d74)
+const tmp = new THREE.Color()
 
 /** Raked soil, tinted by how wet it is. */
 function soilMaterial(colour: THREE.Color) {
@@ -75,6 +87,10 @@ export class GardenScene {
   private effects: Effects
   private ground: GroundView
   private cloud: CloudView
+  private drift: DriftView
+  private precip: Precip
+  /** Visitors; `main` listens to their events for sound. */
+  readonly wildlife: WildlifeView
   private ray = new THREE.Raycaster()
   private dist = 20
   private gust = 0
@@ -104,6 +120,9 @@ export class GardenScene {
     this.buildBed()
     this.ground = new GroundView(s, garden, lite)
     this.cloud = new CloudView(s)
+    this.drift = new DriftView(s)
+    this.precip = new Precip(s)
+    this.wildlife = new WildlifeView(s)
 
     for (const p of garden.plants) {
       const view = new PlantView(p.kind)
@@ -332,9 +351,18 @@ export class GardenScene {
     fieldUniforms.uGust.value = this.gust
     fieldUniforms.uWind.value.set(c.windX, c.windZ)
 
+    const look = garden.climate.look
+    seasonUniforms.uSeason.value.set(look.spring, look.summer, look.autumn, look.winter)
+    seasonUniforms.uSnowAll.value = garden.ground.snowCover
+    const mix = garden.climate.mix
+
     this.cloud.update(garden, dt)
+    this.drift.update(garden, this.camera)
+    this.precip.update(garden, this.focus, dt)
+    this.wildlife.update(garden, dt)
     this.ground.update(garden, dt)
-    this.horizon.update(t, dt)
+    this.horizon.update(t, dt, mix.overcast + mix.rain + mix.snow, look.winter)
+    this.world.setWinter(look.winter)
     this.world.setNight(night)
     this.world.fadeOak(c.x, c.z, dt)
 
@@ -389,29 +417,48 @@ export class GardenScene {
     const gloom = shadeUniforms.uStorm.value * 0.75
     const flash = this.effects?.flash ?? 0
     const sky = this.horizon.sky.uniforms
-    const zenith = (sky.uZenith.value as THREE.Color).copy(ZENITH_NIGHT).lerp(ZENITH_DAY, day).lerp(STORM, gloom * day)
+    const mix = garden.climate.mix
+    const grey = Math.min(1, mix.overcast + mix.rain + mix.snow)
+    const wet = grey > 0 ? (mix.rain + mix.snow * 0.4) / grey : 0
+    const fog = mix.fog
+    const dim = 0.06 + 0.94 * day
+    const zenith = (sky.uZenith.value as THREE.Color).copy(ZENITH_NIGHT).lerp(ZENITH_DAY, day)
+    zenith.lerp(tmp.copy(DULL_ZENITH).lerp(RAIN_ZENITH, wet).multiplyScalar(dim), grey * 0.9)
+    zenith.lerp(tmp.copy(FOG_HORIZON).multiplyScalar(dim), fog * 0.85).lerp(STORM, gloom * day)
     const horizon = (sky.uHorizon.value as THREE.Color)
       .copy(HORIZON_NIGHT)
       .lerp(HORIZON_DAY, day)
-      .lerp(HORIZON_DUSK, dusk * 0.5)
-      .lerp(STORM, gloom * day * 0.8)
+      .lerp(HORIZON_DUSK, dusk * 0.5 * (1 - grey) * (1 - fog))
+    horizon.lerp(tmp.copy(DULL_HORIZON).lerp(RAIN_HORIZON, wet).multiplyScalar(dim), grey * 0.9)
+    horizon.lerp(tmp.copy(FOG_HORIZON).multiplyScalar(dim), fog).lerp(STORM, gloom * day * 0.8)
+    sky.uOvercast.value = grey
+    // A dull day is a darker day: less light overall, not just softer.
+    this.renderer.toneMappingExposure = 1 - grey * (0.2 + wet * 0.12) - fog * 0.08
+    ;(sky.uDeck.value as THREE.Color).copy(DECK).lerp(RAIN_DECK, wet).multiplyScalar(dim)
     if (flash > 0) {
       zenith.lerp(new THREE.Color(0xe8ecff), flash * 0.6)
       horizon.lerp(new THREE.Color(0xf4f6ff), flash * 0.6)
     }
     ;(sky.uGround.value as THREE.Color).copy(horizon).multiplyScalar(0.7)
     this.fogColor.copy(horizon)
-    ;(this.scene.fog as THREE.Fog).color.copy(this.fogColor)
+    const sceneFog = this.scene.fog as THREE.Fog
+    sceneFog.color.copy(this.fogColor)
+    // Fog closes the world in; rain and snow soften the distance.
+    const thick = 1 - (1 - fog) * (1 - mix.rain * 0.55) * (1 - mix.snow * 0.6)
+    sceneFog.near = THREE.MathUtils.lerp(90, 3, fog) * (1 - thick * 0.3)
+    sceneFog.far = THREE.MathUtils.lerp(700, 48, thick)
 
     const s = sunDirection(garden.time)
     const sunDir = new THREE.Vector3(s.x, s.y, s.z).normalize()
     ;(sky.uSunDir.value as THREE.Vector3).copy(sunDir)
-    sky.uSun.value = day * (1 - gloom)
+    sky.uSun.value = day * (1 - gloom) * (1 - grey) * (1 - fog)
     ;(sky.uSunColor.value as THREE.Color).setHex(0xfff2d8).lerp(new THREE.Color(0xffa060), dusk * 0.7)
 
-    this.scene.environmentIntensity = (0.12 + 0.55 * day) * (1 - gloom * 0.5) + flash
-    this.hemi.intensity = (0.25 + 0.75 * day) * (1 - gloom * 0.4) + flash * 2
+    const soft = 1 - Math.max(grey, fog) * 0.2
+    this.scene.environmentIntensity = (0.12 + 0.55 * day) * (1 - gloom * 0.5) * soft + flash
+    this.hemi.intensity = (0.25 + 0.75 * day) * (1 - gloom * 0.4) * soft + flash * 2
     this.hemi.color.setHex(0xdfeeff).lerp(new THREE.Color(0x6f80b8), 1 - day)
+    this.hemi.color.lerp(tmp.setHex(0xc4c8cc), Math.max(grey, fog) * 0.6)
 
     // The shadow box follows the view and grows when zoomed out.
     const f = new THREE.Vector3(this.focus.x, 0, this.focus.y)
@@ -423,7 +470,8 @@ export class GardenScene {
     }
     this.sun.position.copy(f).addScaledVector(sunDir, 60)
     this.sun.target.position.copy(f)
-    this.sun.intensity = 3.2 * day * (1 - gloom * 0.7)
+    // Under cloud the light comes from everywhere: the sun fades and shadows go soft.
+    this.sun.intensity = 3.2 * day * (1 - gloom * 0.7) * Math.max(0.12, 1 - grey * 0.85 - fog * 0.6)
     this.sun.color.setHex(0xfff0d8).lerp(new THREE.Color(0xffa868), dusk * 0.6)
     this.moon.position.set(f.x - 10, 25, f.z + 12)
     this.moon.target.position.copy(f)

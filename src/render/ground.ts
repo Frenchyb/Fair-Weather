@@ -8,7 +8,7 @@
 import * as THREE from 'three'
 import type { Garden } from '../sim/garden'
 import { T } from '../tuning'
-import { fieldUniforms, shaded } from './shade'
+import { fieldUniforms, seasonUniforms, shaded } from './shade'
 import { surfaces } from './textures'
 import { rng } from './world'
 
@@ -68,6 +68,8 @@ function clump() {
 export class GroundView {
   private data: Uint8Array
   private tex: THREE.DataTexture
+  private coverData: Uint8Array
+  private cover: THREE.DataTexture
   private scorch: THREE.Mesh[] = []
   private scorchMat: THREE.MeshBasicMaterial[] = []
   private stems: THREE.InstancedMesh
@@ -86,6 +88,11 @@ export class GroundView {
     this.tex.minFilter = THREE.LinearFilter
     this.tex.needsUpdate = true
     fieldUniforms.uField.value = this.tex
+    this.coverData = new Uint8Array(g.cols * g.rows * 4)
+    this.cover = new THREE.DataTexture(this.coverData, g.cols, g.rows, THREE.RGBAFormat)
+    this.cover.magFilter = this.cover.minFilter = THREE.LinearFilter
+    this.cover.needsUpdate = true
+    seasonUniforms.uCover.value = this.cover
     fieldUniforms.uFieldMin.value.set(g.x0, g.z0)
     fieldUniforms.uFieldSize.value.set(g.cols * g.cell, g.rows * g.cell)
 
@@ -204,6 +211,12 @@ export class GroundView {
       d[o + 3] = (g.bendZ[k] * 0.5 + 0.5) * 255
     }
     this.tex.needsUpdate = true
+    const cv = this.coverData
+    for (let k = 0; k < g.snow.length; k++) {
+      cv[k * 4] = g.snow[k] * 255
+      cv[k * 4 + 1] = g.leaves[k] * 255
+    }
+    this.cover.needsUpdate = true
 
     this.updateMarks(garden)
     this.updateBanks(garden, dt)
@@ -244,17 +257,23 @@ export class GroundView {
     const c = garden.cloud
     const night = 1 - garden.daylight
     // While fogging, lay new banks down under the cloud.
-    if (c.fogging) {
-      this.bankClock += dt
+    // On a foggy day, banks lie all over the garden.
+    const foggy = garden.climate.fogginess
+    if (c.fogging || foggy > 0.3) {
+      this.bankClock += dt * (c.fogging ? 1 : foggy * 0.5)
       while (this.bankClock > 0.25) {
         this.bankClock -= 0.25
+        const y = T.yard
+        const wide = !c.fogging
+        const bx = wide ? y.x0 + Math.random() * (y.x1 - y.x0) : c.x
+        const bz = wide ? y.z0 + Math.random() * (y.z1 - y.z0) : c.z
         const i = this.bankState.findIndex((b) => b.age >= b.life)
         const free = i >= 0 ? i : this.bankState.reduce((o, b, j, a) => (b.age / b.life > a[o].age / a[o].life ? j : o), 0)
         const a = Math.random() * Math.PI * 2
-        const r = Math.sqrt(Math.random()) * garden.radius
+        const r = wide ? 0 : Math.sqrt(Math.random()) * garden.radius
         this.bankState[free] = {
-          x: c.x + Math.cos(a) * r,
-          z: c.z + Math.sin(a) * r,
+          x: bx + Math.cos(a) * r,
+          z: bz + Math.sin(a) * r,
           age: 0,
           life: T.render.fogLingers * (0.7 + Math.random() * 0.6),
           size: 2.2 + Math.random() * 2,

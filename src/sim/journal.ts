@@ -13,7 +13,7 @@ export const WISHES = [
   { id: 'fairy-ring', text: 'Go back to a lightning scorch a little later and see what grew.' },
   { id: 'storm', text: 'Let a storm go with G once it has gathered. Greener grass gathers it faster.' },
   { id: 'green-half', text: 'Green half the lawn. Rain on dry grass and it stays green.' },
-  { id: 'rainy-day', text: 'Call up a rainy day for the whole garden: press 3, or Rain at the bottom.' },
+  { id: 'rainy-day', text: 'Call up a rainy day for the whole garden: press 3, or Rain at the bottom right.' },
   { id: 'snow', text: 'Let it snow in winter until the lawn is white.' },
   { id: 'leaves', text: 'Blow the autumn leaves about with a breeze.' },
   { id: 'four-seasons', text: 'See all four seasons come round.' },

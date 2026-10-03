@@ -167,67 +167,67 @@
         margin-top: 4px;
         opacity: 0.75;
       }
-      @media (max-width: 600px) {
+      #sky {
+        right: 16px;
+        bottom: 18px;
+        pointer-events: auto;
+        display: grid;
+        gap: 5px;
+        font-size: 13px;
+        padding: 8px 10px;
+      }
+      #sky .row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+      }
+      #sky .label {
+        width: 54px;
+        font-style: italic;
+        opacity: 0.7;
+      }
+      #sky button {
+        font: inherit;
+        color: inherit;
+        background: rgba(47, 58, 44, 0.06);
+        border: 1px solid rgba(47, 58, 44, 0.18);
+        border-radius: 6px;
+        padding: 2px 7px;
+        cursor: pointer;
+      }
+      #sky button:hover {
+        background: rgba(47, 58, 44, 0.14);
+      }
+      #sky button.now {
+        border-color: rgba(47, 58, 44, 0.55);
+      }
+      #sky button.on {
+        background: #5d7a4a;
+        border-color: #5d7a4a;
+        color: #f6f3e6;
+      }
+      #sky kbd {
+        font: inherit;
+        font-size: 10px;
+        opacity: 0.55;
+        margin-left: 3px;
+      }
+      @media (max-width: 760px) {
         .card {
           font-size: 13px;
         }
         #hint {
           max-width: 200px;
         }
-        #journal {
-        right: 16px;
-        top: 62px;
-        width: 290px;
-        pointer-events: auto;
-        font-size: 14px;
-      }
-      #journal-head {
-        cursor: pointer;
-        font-style: italic;
-      }
-      #journal-head span {
-        opacity: 0.55;
-        font-size: 12px;
-      }
-      #journal ul {
-        list-style: none;
-        margin: 6px 0 0;
-        padding: 0;
-        display: grid;
-        gap: 4px;
-      }
-      #journal li {
-        padding-left: 20px;
-        position: relative;
-        opacity: 0.9;
-      }
-      #journal li::before {
-        content: '';
-        position: absolute;
-        left: 2px;
-        top: 4px;
-        width: 10px;
-        height: 10px;
-        border: 1.5px solid var(--ink);
-        border-radius: 50%;
-        opacity: 0.6;
-      }
-      #journal li.done {
-        opacity: 0.5;
-        text-decoration: line-through;
-      }
-      #journal li.done::before {
-        background: #5d8f3c;
-        border-color: #5d8f3c;
-        opacity: 1;
-      }
-      #journal.closed ul {
-        display: none;
-      }
-      #tip {
+        #tip {
           white-space: normal;
           width: calc(100vw - 64px);
           text-align: center;
+          bottom: 120px;
+        }
+        #sky kbd {
+          display: none;
         }
       }
     </style>
@@ -239,7 +239,9 @@
       <b>Move</b> to steer the cloud. <b>Hold the mouse button</b> (or space) to rain.
       <b>X</b> and <b>Z</b> spread it wide or gather it in. Rest it over the pond to
       fill it up. <b>WASD</b> or the screen's edge look around, <b>Q</b> and <b>E</b>
-      turn the view, and <b>scroll</b> zooms. The journal on the right has more to try.
+      turn the view, and <b>scroll</b> zooms. Set the day's weather and the season
+      bottom right, or leave them on Auto and watch the year go round. The journal
+      on the right has more to try.
     </div>
     <div id="count" class="card"></div>
     <div id="journal" class="card">
@@ -249,6 +251,10 @@
     <div id="tip" class="card"></div>
     <div id="toast" class="card"></div>
     <div id="storm" class="card"></div>
+    <div id="sky" class="card">
+      <div class="row" id="weather-row"><span class="label">Weather</span></div>
+      <div class="row" id="season-row"><span class="label">Season</span></div>
+    </div>
     <div id="done" class="card">
       Full bloom. The bees have found your garden.
       <small>Stay as long as you like.</small>

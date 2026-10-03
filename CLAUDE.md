@@ -70,3 +70,22 @@ three.js, Vite, vitest. Concept and plan: `/mnt/project-files/weather-game/conce
   text kills the shell. Start previews on a fresh port instead.
 - The test gardener in `test/garden.test.ts` is a crude bot; if it can reach full
   bloom under 300 s, a person can. Re-run it after turning any growth dial.
+- **A living world (Rick, 2026-10-03: "not me just guiding one individual
+  cloud around").** `sim/climate.ts` holds the day's weather (clear, overcast,
+  rain, fog, snow) and the season. Both change on their own and can be pinned
+  from the HUD (keys 0-9). Changes ease through `mix` and `look`, never snap;
+  render reads those blends. Drifting `climate.clouds` shade the sim only on a
+  clear day, and `render/drift.ts` paints the same shade (`uSkyClouds`).
+- Winter rests the garden: `climate.growth` is 0 and nobody asks for anything,
+  so growth still never goes backwards. The player's cloud snows instead of
+  raining. Snow and fallen leaves live on the ground grid and reach shaders as a
+  second texture, `uCover` (R snow, G leaves). Everything takes snow on its
+  upward faces; `foliage` turns in autumn and goes bare (discard) in winter.
+- Tests build gardens with `{ still: true }` (clear summer, no drifting clouds)
+  so each sees only what it sets up. Climate tests use their own seeded random.
+- `sim/wildlife.ts` says how many of each visitor are about; `render/wildlife.ts`
+  decides where they wander and keeps shy ones out of the player's rain.
+  Critters are drawn larger than life (`T.render.critterSize`) because a
+  life-size robin is a speck from the usual height.
+- Grey days lower `toneMappingExposure`; the sky above is rarely in view from
+  the usual pitch, so dull weather has to read from the light on the ground.

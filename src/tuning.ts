@@ -192,7 +192,7 @@ export const T = {
       winter: { clear: 0.3, overcast: 0.25, rain: 0, fog: 0.1, snow: 0.35 },
     },
     /** Drifting clouds: how many for each kind of day, and how fast they go (m/s). */
-    clouds: { clear: 4, overcast: 14, rain: 14, fog: 0, snow: 12, speed: 1.4, height: [15, 21] as [number, number] },
+    clouds: { clear: 5, overcast: 8, rain: 8, fog: 0, snow: 7, speed: 1.4, height: [15, 21] as [number, number] },
     /** How much a drifting cloud dims the ground under it on a clear day. */
     cloudShade: 0.5,
   },
@@ -408,11 +408,29 @@ export const T = {
     fogBanks: 40,
     /** Seconds a fog bank lingers after it settles. */
     fogLingers: 60,
+    /** Weather over the whole garden, drawn round the view. */
+    precip: { rain: 2500, rainRate: 2200, snow: 3500, snowRate: 900, cloudSnowRate: 500, leaves: 220, leafRate: 14, reach: 22, height: 18 },
+    /** Drifting clouds overhead, and how many puffs each. */
+    skyPuffs: 9,
+    /** Visitors drawn larger than life, so they read from the usual height. */
+    critterSize: { bird: 2.2, rabbit: 1.5, frog: 2, duck: 1.4 },
     beesPerPlant: 2,
     butterflies: 24,
     fireflies: 140,
     windWisps: 60,
   },
 
-  audio: { rainGain: 0.22, windGain: 0.35, rainFade: 0.6, thunderGain: 0.5 },
+  audio: {
+    rainGain: 0.22,
+    windGain: 0.35,
+    rainFade: 0.6,
+    thunderGain: 0.5,
+    /** Songs a second per bird about, crickets on a warm night, frog croaks a second per frog. */
+    songRate: 0.06,
+    songGain: 0.035,
+    cricketGain: 0.012,
+    croakRate: 0.25,
+    croakGain: 0.05,
+    honkGain: 0.04,
+  },
 }

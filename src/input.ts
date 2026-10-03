@@ -1,3 +1,4 @@
+import type { Season, WeatherKind } from './sim/climate'
 import { T } from './tuning'
 
 const PAN_KEYS: Record<string, [number, number]> = {
@@ -9,6 +10,21 @@ const PAN_KEYS: Record<string, [number, number]> = {
   ArrowLeft: [-1, 0],
   KeyD: [1, 0],
   ArrowRight: [1, 0],
+}
+
+export const WEATHER_KEYS: Record<string, WeatherKind | 'auto'> = {
+  Digit0: 'auto',
+  Digit1: 'clear',
+  Digit2: 'overcast',
+  Digit3: 'rain',
+  Digit4: 'fog',
+  Digit5: 'snow',
+}
+export const SEASON_KEYS: Record<string, Season> = {
+  Digit6: 'spring',
+  Digit7: 'summer',
+  Digit8: 'autumn',
+  Digit9: 'winter',
 }
 
 /**
@@ -27,6 +43,9 @@ export class Input {
   /** Set on the first press, so audio can start inside a user gesture. */
   onFirstPress?: () => void
   onToggleJournal?: () => void
+  /** A weather or season asked for since last read: keys 0-5 and 6-9, or the buttons. */
+  weatherAsked: WeatherKind | 'auto' | null = null
+  seasonAsked: Season | 'auto' | null = null
   private strikeAsked = false
   private stormAsked = false
   private keys = new Set<string>()
@@ -91,6 +110,12 @@ export class Input {
         this.press()
       } else if (e.code === 'KeyL' && !e.repeat) {
         this.strikeAsked = true
+        this.press()
+      } else if (WEATHER_KEYS[e.code] && !e.repeat) {
+        this.weatherAsked = WEATHER_KEYS[e.code]
+        this.press()
+      } else if (SEASON_KEYS[e.code] && !e.repeat) {
+        this.seasonAsked = SEASON_KEYS[e.code]
         this.press()
       } else if (e.code === 'KeyJ' && !e.repeat) {
         this.onToggleJournal?.()
@@ -176,7 +201,7 @@ export class Input {
     this.pointer = { x: e.clientX, y: e.clientY }
   }
 
-  private press() {
+  press() {
     if (this.pressed) return
     this.pressed = true
     this.onFirstPress?.()

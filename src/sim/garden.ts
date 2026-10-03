@@ -207,7 +207,7 @@ export class Garden {
   /** Share of the lawn properly green, refreshed every step. */
   greenShare = 0
   /** Where leaves come down in autumn: the oak, the orchard, the hedge. */
-  private trees: { x: number; z: number }[] = []
+  readonly trees: { x: number; z: number }[] = []
   private visitClock = 0
   rainbow: Rainbow | null = null
   strike: Strike | null = null
@@ -258,11 +258,11 @@ export class Garden {
     this.ground = new Ground(() => this.random())
     this.climate = new Climate(() => this.random(), options.still)
     for (const p of this.plants) this.assess(p, 1)
-    this.trees = [
+    this.trees.push(
       { x: T.oak.x, z: T.oak.z },
       ...T.plantings.filter((p) => p.kind === 'apple'),
       ...Array.from({ length: 10 }, (_, i) => ({ x: T.yard.x0 + 2 + i * 3.8, z: T.yard.z0 + 0.5 })),
-    ]
+    )
     this.greenShare = this.ground.greenShare
   }
 

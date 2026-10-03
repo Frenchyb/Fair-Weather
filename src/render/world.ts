@@ -10,6 +10,8 @@ import lanternGlb from '../assets/lantern.glb'
 import { shaded } from './shade'
 import { surfaces } from './textures'
 
+const ICE = new THREE.Color(0xb8cad6)
+
 /** Deterministic scatter, so the garden looks the same every visit. */
 export function rng(seed: number) {
   return () => {
@@ -52,8 +54,9 @@ export function foliage(seed: number) {
   return g
 }
 
-function leaves(color: THREE.Color) {
-  return shaded(new THREE.MeshStandardMaterial({ color, vertexColors: true, roughness: 0.85 }))
+/** Leaves that turn in autumn and drop in winter, or (`evergreen`) stay. */
+function leaves(color: THREE.Color, evergreen = false) {
+  return shaded(new THREE.MeshStandardMaterial({ color, vertexColors: true, roughness: 0.85 }), evergreen ? 'evergreen' : 'foliage')
 }
 
 function add(parent: THREE.Object3D, mesh: THREE.Mesh, cast = true, receive = true) {
@@ -87,6 +90,10 @@ export class World {
   private windows: THREE.MeshStandardMaterial
   private lamps = new THREE.MeshStandardMaterial({ color: 0xfff1c8, emissive: 0xffc46a, emissiveIntensity: 0 })
   private oakLeaves: THREE.MeshStandardMaterial[] = []
+  /** Deciduous crowns: bare in winter, so they stop casting full shadows. */
+  private crowns: THREE.Mesh[] = []
+  private water!: THREE.MeshStandardMaterial
+  private lilies: THREE.Mesh[] = []
   private r = rng(7)
 
   constructor() {
@@ -137,6 +144,15 @@ export class World {
     }
   }
 
+  /** Winter: bare trees, a frozen pond, lily pads gone under the ice. */
+  setWinter(winter: number) {
+    const bare = winter > 0.5
+    for (const c of this.crowns) c.castShadow = !bare
+    for (const l of this.lilies) l.visible = winter < 0.3
+    this.water.color.setHex(0x4b87a8).lerp(ICE, winter)
+    this.water.roughness = 0.12 + winter * 0.3
+  }
+
   /** 0 by day, 1 at night: lights on in the house. */
   setNight(night: number) {
     this.windows.emissiveIntensity = night * 1.4
@@ -172,7 +188,7 @@ export class World {
     // A hedge of round shrubs outside the fence, and trees beyond it.
     const crown = foliage(3)
     const shrub = (x: number, z: number, s: number) => {
-      const mat = leaves(new THREE.Color().setHSL(0.25 + r() * 0.05, 0.4, 0.27 + r() * 0.08))
+      const mat = leaves(new THREE.Color().setHSL(0.25 + r() * 0.05, 0.4, 0.27 + r() * 0.08), true)
       const m = new THREE.Mesh(crown, mat)
       m.scale.set(s * 1.2, s, s)
       m.position.set(x, s * 0.6, z)
@@ -193,6 +209,7 @@ export class World {
       c.position.y = 4
       c.scale.set(2.4, 2.2, 2.4)
       add(t, c, true, false)
+      this.crowns.push(c)
       t.position.set(x, 0, back - 5 - r() * 3)
       t.scale.setScalar(0.9 + r() * 0.5)
       this.root.add(t)
@@ -291,7 +308,7 @@ export class World {
 
     // Foundation planting: boxwood balls and a strip of flowers along the house.
     const ball = foliage(5).scale(0.45, 0.45, 0.45)
-    const boxwood = leaves(new THREE.Color(0x3f6b32))
+    const boxwood = leaves(new THREE.Color(0x3f6b32), true)
     for (const x of [hx0 + 0.6, hx0 + 1.6, hx1 - 0.6, hx1 - 1.6]) {
       const b = new THREE.Mesh(ball, boxwood)
       b.position.set(x, 0.4, p.z0 + 0.2)
@@ -396,6 +413,7 @@ export class World {
       c.position.set(Math.cos(a) * d, o.crownHeight + (r() - 0.3) * 0.9, Math.sin(a) * d)
       c.scale.setScalar(o.crownRadius * (0.5 + r() * 0.2))
       add(g, c, true, false)
+      this.crowns.push(c)
     }
     g.position.set(o.x, 0, o.z)
     this.root.add(g)
@@ -403,10 +421,8 @@ export class World {
 
   private pond() {
     const { x, z, radius } = T.pond
-    const water = new THREE.Mesh(
-      new THREE.CircleGeometry(radius, 48),
-      shaded(new THREE.MeshStandardMaterial({ color: 0x4b87a8, roughness: 0.12, metalness: 0.1 })),
-    )
+    this.water = shaded(new THREE.MeshStandardMaterial({ color: 0x4b87a8, roughness: 0.12, metalness: 0.1 }))
+    const water = new THREE.Mesh(new THREE.CircleGeometry(radius, 48), this.water)
     water.rotation.x = -Math.PI / 2
     water.position.set(x, 0.03, z)
     add(this.root, water, false)
@@ -431,10 +447,12 @@ export class World {
       p.rotation.y = r() * 6
       p.scale.setScalar(0.8 + r() * 0.6)
       add(this.root, p, false)
+      this.lilies.push(p)
       if (i % 3 === 0) {
         const f = new THREE.Mesh(new THREE.IcosahedronGeometry(0.07, 0), lambert(0xf2b6c8))
         f.position.set(p.position.x, 0.09, p.position.z)
         add(this.root, f, false)
+        this.lilies.push(f)
       }
     }
     // Reeds and bulrushes on the far bank.

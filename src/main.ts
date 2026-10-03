@@ -1,5 +1,6 @@
 import { Sound } from './audio'
-import { Input } from './input'
+import { Input, SEASON_KEYS, WEATHER_KEYS } from './input'
+import { SEASONS, WEATHERS, type Season, type WeatherKind } from './sim/climate'
 import { GardenScene } from './render/scene'
 import { Garden, type StrikeRefusal } from './sim/garden'
 import { WISHES } from './sim/journal'
@@ -15,6 +16,8 @@ const journal = document.getElementById('journal')!
 const wishList = document.getElementById('wishes')!
 const journalHead = document.getElementById('journal-head')!
 const stormBadge = document.getElementById('storm')!
+const weatherRow = document.getElementById('weather-row')!
+const seasonRow = document.getElementById('season-row')!
 
 let toastTimer = 0
 function say(text: string) {
@@ -42,7 +45,7 @@ let journalTimer = 0
 
 const REFUSED: Record<StrikeRefusal, string> = {
   'too-little-water': 'Lightning needs a fuller cloud. Rest it over the pond first.',
-  'too-spread': 'Gather the cloud in tight first: scroll down, or press Q.',
+  'too-spread': 'Gather the cloud in tight first: press Z.',
   'too-soon': '',
 }
 
@@ -90,6 +93,66 @@ const input = new Input(canvas)
 input.onFirstPress = () => sound.start()
 input.onToggleJournal = toggleJournal
 
+// The weather and season buttons, bottom right. Auto lets the climate decide.
+const NAMES: Record<string, string> = {
+  auto: 'Auto',
+  clear: 'Clear',
+  overcast: 'Overcast',
+  rain: 'Rain',
+  fog: 'Fog',
+  snow: 'Snow',
+  spring: 'Spring',
+  summer: 'Summer',
+  autumn: 'Autumn',
+  winter: 'Winter',
+}
+const keyFor = (map: Record<string, string>, v: string) => Object.keys(map).find((k) => map[k] === v)?.replace('Digit', '')
+const weatherButtons = new Map<string, HTMLButtonElement>()
+const seasonButtons = new Map<string, HTMLButtonElement>()
+function button(row: HTMLElement, map: Map<string, HTMLButtonElement>, value: string, key: string | undefined, pick: () => void) {
+  const b = document.createElement('button')
+  b.innerHTML = NAMES[value] + (key ? `<kbd>${key}</kbd>` : '')
+  b.addEventListener('click', () => {
+    pick()
+    input.press()
+  })
+  row.appendChild(b)
+  map.set(value, b)
+}
+for (const w of ['auto', ...WEATHERS] as (WeatherKind | 'auto')[]) {
+  button(weatherRow, weatherButtons, w, keyFor(WEATHER_KEYS, w), () => (input.weatherAsked = w))
+}
+for (const se of ['auto', ...SEASONS] as (Season | 'auto')[]) {
+  button(seasonRow, seasonButtons, se, keyFor(SEASON_KEYS, se), () => (input.seasonAsked = se))
+}
+function showSky() {
+  const cl = garden.climate
+  for (const [w, b] of weatherButtons) {
+    b.classList.toggle('on', w === 'auto' ? !cl.weatherPinned : cl.weatherPinned && cl.weather === w)
+    b.classList.toggle('now', w === cl.weather)
+  }
+  for (const [se, b] of seasonButtons) {
+    b.classList.toggle('on', se === 'auto' ? !cl.seasonPinned : cl.seasonPinned && cl.season === se)
+    b.classList.toggle('now', se === cl.season)
+  }
+}
+
+const WEATHER_SAY: Record<WeatherKind, string> = {
+  clear: 'The sky is clearing.',
+  overcast: 'It is clouding over.',
+  rain: 'A rainy day is setting in. Everything gets a drink.',
+  fog: 'Fog is rolling in.',
+  snow: 'It is starting to snow.',
+}
+const SEASON_SAY: Record<Season, string> = {
+  spring: 'Spring. Everything is waking up.',
+  summer: 'Summer. Long warm days; the soil dries faster.',
+  autumn: 'Autumn. The leaves are turning, and the geese are on the move.',
+  winter: 'Winter. The garden rests: nothing grows, nothing needs you. Snow, if it comes, will settle.',
+}
+let shownWeather = garden.climate.weather
+let shownSeason = garden.climate.season
+
 addEventListener('resize', () => view.resize())
 view.resize()
 
@@ -120,6 +183,9 @@ function frame(now: number) {
   const steps = Math.ceil(dt / (1 / 60))
   const strike = input.takeStrike()
   const storm = input.takeStorm()
+  const weather = input.weatherAsked ?? undefined
+  const season = input.seasonAsked ?? undefined
+  input.weatherAsked = input.seasonAsked = null
   for (let i = 0; i < steps; i++) {
     garden.update(dt / steps, {
       target,
@@ -129,12 +195,33 @@ function frame(now: number) {
       spread: input.spread,
       strike: strike && i === 0,
       storm: storm && i === 0,
+      weather: i === 0 ? weather : undefined,
+      season: i === 0 ? season : undefined,
     })
   }
   if (input.fog && !garden.cloud.fogging) input.fog = false
-  sound.setRaining(garden.cloud.raining || garden.storming)
+  const cl = garden.climate
+  const showering = (garden.cloud.raining && !cl.dormant) || garden.storming
+  sound.setRaining(Math.max(showering ? 1 : 0, cl.rainfall * 0.85))
   sound.setBreeze(garden.cloud.breezing)
   view.render(garden, dt, wall)
+  const v = garden.visitors
+  // Crickets on a warm, dry night.
+  const warm = cl.look.summer + cl.look.spring * 0.5
+  const crickets = (1 - garden.daylight) * warm * (1 - cl.rainfall) * (cl.dormant ? 0 : 1)
+  sound.ambience(dt, v.birds, v.frogs, crickets)
+  for (const e of view.wildlife.events.splice(0)) {
+    if (e === 'honk') sound.honk()
+    else if (e === 'flutter') sound.flutter()
+  }
+  if (cl.season !== shownSeason) {
+    shownSeason = cl.season
+    say(SEASON_SAY[cl.season])
+  } else if (cl.weather !== shownWeather) {
+    say(WEATHER_SAY[cl.weather])
+  }
+  shownWeather = cl.weather
+  showSky()
 
   const st = garden.storm
   stormBadge.classList.toggle('on', garden.storming)
@@ -143,9 +230,9 @@ function frame(now: number) {
   stormBadge.textContent = garden.storming ? 'Storm' : st.charge >= 1 ? 'Storm ready: G' : 'Storm gathering'
 
   const wild = garden.wildflowers.length
-  const night = garden.daylight < 0.5 ? 'Night. ' : ''
+  const night = garden.daylight < 0.5 ? 'night' : 'day'
   count.textContent =
-    `${night}${garden.bloomed} of ${garden.plants.length} in bloom, lawn ${Math.round(garden.ground.greenShare * 100)}% green` +
+    `${NAMES[cl.season]}, ${night}. ${garden.bloomed} of ${garden.plants.length} in bloom, lawn ${Math.round(garden.ground.greenShare * 100)}% green` +
     (wild ? `, ${wild} wildflowers` : '')
 
   // The instructions step aside once the player has rained for a while.

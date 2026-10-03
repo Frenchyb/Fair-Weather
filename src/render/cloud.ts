@@ -16,7 +16,7 @@ const cloudUniforms = {
   uGrey: { value: 0 },
 }
 
-function lumpy(detail: number, seed: number) {
+export function lumpy(detail: number, seed: number) {
   const g = new THREE.IcosahedronGeometry(1, detail)
   const p = g.attributes.position as THREE.BufferAttribute
   const v = new THREE.Vector3()
@@ -184,7 +184,8 @@ export class CloudView {
     const fall = T.render.rainSpeed * dt
     const storming = this.storm > 0.3
     const radius = storming ? T.storm.radius : garden.radius
-    const rate = (c.raining ? 900 : 0) + (storming ? 2600 * this.storm : 0)
+    // In winter the cloud snows instead; `Precip` draws the flakes.
+    const rate = (c.raining && !garden.climate.dormant ? 900 : 0) + (storming ? 2600 * this.storm : 0)
     this.spawnDebt += rate * dt
     const len = 0.7
     const top = this.y - 0.2

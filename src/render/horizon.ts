@@ -6,6 +6,7 @@
  */
 import * as THREE from 'three'
 import { T } from '../tuning'
+import { seasonUniforms, shaded } from './shade'
 import { rng } from './world'
 
 const SKY_VS = `
@@ -17,9 +18,15 @@ void main() {
 }`
 
 const SKY_FS = `
-uniform vec3 uZenith, uHorizon, uGround, uSunDir, uSunColor;
-uniform float uSun;
+uniform vec3 uZenith, uHorizon, uGround, uSunDir, uSunColor, uDeck;
+uniform float uSun, uOvercast, uTime;
 varying vec3 vDir;
+float skHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float skNoise(vec2 p) {
+  vec2 i = floor(p); vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(skHash(i), skHash(i + vec2(1, 0)), u.x), mix(skHash(i + vec2(0, 1)), skHash(i + vec2(1, 1)), u.x), u.y);
+}
 void main() {
   vec3 d = normalize(vDir);
   float up = d.y;
@@ -27,6 +34,14 @@ void main() {
   c = mix(c, uGround, smoothstep(0.0, -0.08, up));
   float s = max(0.0, dot(d, normalize(uSunDir)));
   c += uSunColor * (pow(s, 900.0) * 6.0 + pow(s, 12.0) * 0.35) * uSun;
+  // A grey deck of cloud on an overcast or rainy day, lumpy underneath and drifting.
+  if (uOvercast > 0.0 && up > -0.02) {
+    vec2 p = d.xz / max(0.06, up + 0.06) * 1.6 + vec2(uTime * 0.02, uTime * 0.007);
+    float n = skNoise(p) * 0.5 + skNoise(p * 2.1) * 0.3 + skNoise(p * 4.3) * 0.2;
+    float lump = smoothstep(0.25, 0.75, n);
+    vec3 deck = uDeck * (0.78 + 0.35 * lump);
+    c = mix(c, deck, uOvercast * mix(0.85, 1.0, lump) * smoothstep(-0.02, 0.08, up));
+  }
   gl_FragColor = vec4(c, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -64,6 +79,8 @@ export class Horizon {
   readonly sky: THREE.ShaderMaterial
   private sails = new THREE.Group()
   private clouds: THREE.Group[] = []
+  private crowns!: THREE.InstancedMesh
+  private cloudMat!: THREE.MeshStandardMaterial
 
   constructor() {
     this.sky = new THREE.ShaderMaterial({
@@ -79,6 +96,9 @@ export class Horizon {
         uSunDir: { value: new THREE.Vector3(0, 1, 0) },
         uSunColor: { value: new THREE.Color(0xfff2d8) },
         uSun: { value: 1 },
+        uOvercast: { value: 0 },
+        uDeck: { value: new THREE.Color(0x9aa1a8) },
+        uTime: { value: 0 },
       },
     })
     const dome = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), this.sky)
@@ -113,17 +133,23 @@ export class Horizon {
     geo.computeVertexNormals()
     const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 })
     mat.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, seasonUniforms)
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec2 vLandXZ;')
         .replace('#include <project_vertex>', '#include <project_vertex>\nvLandXZ = (modelMatrix * vec4(transformed, 1.0)).xz;')
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', `#include <common>\nvarying vec2 vLandXZ;\n${PATCHWORK}`)
+        .replace('#include <common>', `#include <common>\nvarying vec2 vLandXZ;\nuniform float uSnowAll;\nuniform vec4 uSeason;\n${PATCHWORK}`)
         .replace(
           '#include <color_fragment>',
           `#include <color_fragment>
           // Next door's lawns and the lane blend into the open fields.
           float near = smoothstep(55.0, 90.0, length(vLandXZ * vec2(1.0, 1.3)));
-          diffuseColor.rgb = mix(vec3(0.17, 0.30, 0.08), patchwork(vLandXZ), near);`,
+          diffuseColor.rgb = mix(vec3(0.17, 0.30, 0.08), patchwork(vLandXZ), near);
+          // Stubble and ploughland in autumn, dull in winter, and white under snow.
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.15, 0.9, 0.6), uSeason.z * 0.6);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.2, 0.19, 0.12), uSeason.w * 0.5);
+          float drift = hwHash(floor(vLandXZ * 0.3));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.84, 0.87, 0.92), smoothstep(0.1, 0.6, uSnowAll + (drift - 0.5) * 0.2));`,
         )
     }
     mat.customProgramCacheKey = () => 'fw-land'
@@ -139,7 +165,8 @@ export class Horizon {
     const crown = new THREE.IcosahedronGeometry(1, 1)
     const trunk = new THREE.CylinderGeometry(0.12, 0.18, 1, 5)
     trunk.translate(0, 0.5, 0)
-    const crowns = new THREE.InstancedMesh(crown, new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true }), n)
+    const crowns = new THREE.InstancedMesh(crown, shaded(new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true }), 'foliage'), n)
+    this.crowns = crowns
     const trunks = new THREE.InstancedMesh(trunk, new THREE.MeshStandardMaterial({ color: 0x4a3626 }), n)
     const m = new THREE.Matrix4()
     const c = new THREE.Color()
@@ -253,6 +280,7 @@ export class Horizon {
     const r = rng(5)
     const puff = new THREE.IcosahedronGeometry(1, 2)
     const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x8796a8, roughness: 1, fog: false })
+    this.cloudMat = mat
     for (let i = 0; i < 18; i++) {
       const g = new THREE.Group()
       const k = 5 + Math.floor(r() * 6)
@@ -272,7 +300,13 @@ export class Horizon {
     }
   }
 
-  update(time: number, dt: number) {
+  /** `grey` 0 to 1: fair-weather cumulus darken and thin out under a grey sky. */
+  update(time: number, dt: number, grey = 0, winter = 0) {
+    this.sky.uniforms.uTime.value = time
+    this.cloudMat.color.setScalar(1 - grey * 0.45)
+    this.cloudMat.emissive.setHex(0x8796a8).multiplyScalar(1 - grey * 0.5)
+    for (const c of this.clouds) c.visible = grey < 0.85
+    this.crowns.castShadow = winter < 0.5
     this.sails.rotation.z -= dt * 0.35
     for (const c of this.clouds) {
       c.position.x += c.userData.speed * dt
