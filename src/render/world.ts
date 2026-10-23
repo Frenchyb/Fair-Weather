@@ -5,6 +5,7 @@
  */
 import * as THREE from 'three'
 import { T } from '../tuning'
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import lanternGlb from '../assets/lantern.glb'
 import { shaded } from './shade'
@@ -29,6 +30,52 @@ function paving(color: number | THREE.Color) {
   return shaded(new THREE.MeshStandardMaterial({ color, roughness: 0.9 }), 'wet')
 }
 
+const stoneGrain = rng(13)
+
+/**
+ * Lay texture coordinates on in metres, each face projected along its main
+ * axis, so a photographed surface keeps its real scale on boxes of any size.
+ */
+export function metricUV<G extends THREE.BufferGeometry>(g: G): G {
+  const p = g.attributes.position
+  const n = g.attributes.normal
+  const uv = new Float32Array(p.count * 2)
+  for (let i = 0; i < p.count; i++) {
+    const ax = Math.abs(n.getX(i))
+    const ay = Math.abs(n.getY(i))
+    const az = Math.abs(n.getZ(i))
+    const [u, v] = ay >= ax && ay >= az ? [p.getX(i), p.getZ(i)] : ax >= az ? [p.getZ(i), p.getY(i)] : [p.getX(i), p.getY(i)]
+    uv[i * 2] = u
+    uv[i * 2 + 1] = v
+  }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
+  return g
+}
+
+/** A photographed surface, tinted. Use on geometry with `metricUV`, or set its own repeat. */
+export function surface(kind: 'wood' | 'roof' | 'plaster' | 'bark', tint: number | THREE.Color, roughness = 0.88) {
+  const m = lambert(tint)
+  m.map = surfaces[kind].map
+  m.normalMap = surfaces[kind].normal
+  m.roughness = roughness
+  return m
+}
+
+/** A loose stone: photographed grain from the paving, a part of one tile at a time. */
+function fieldStone(color: THREE.Color, wet = true) {
+  const m = wet ? paving(color) : lambert(color)
+  const pick = (t: THREE.Texture) => {
+    const c = t.clone()
+    c.repeat.set(0.3, 0.3)
+    c.offset.set(stoneGrain(), stoneGrain())
+    return c
+  }
+  m.map = pick(surfaces.stone.map)
+  m.normalMap = pick(surfaces.stone.normal)
+  m.roughness = 0.95
+  return m
+}
+
 /**
  * A clump of foliage: a lumpy ball, lighter on top where the sun gets in and
  * darker underneath, so a crown made of a few of them reads as leaves, not as
@@ -50,8 +97,12 @@ export function foliage(seed: number) {
     colours.push(light, light, light * 0.95)
   }
   g.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3))
-  g.computeVertexNormals()
-  return g
+  // Weld the faces so the crown shades smoothly instead of as facets.
+  g.deleteAttribute('normal')
+  g.deleteAttribute('uv')
+  const smooth = mergeVertices(g)
+  smooth.computeVertexNormals()
+  return smooth
 }
 
 /** Leaves that turn in autumn and drop in winter, or (`evergreen`) stay. */
@@ -67,7 +118,7 @@ function add(parent: THREE.Object3D, mesh: THREE.Mesh, cast = true, receive = tr
 }
 
 function box(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat)
+  const m = new THREE.Mesh(metricUV(new THREE.BoxGeometry(w, h, d)), mat)
   m.position.set(x, y, z)
   return m
 }
@@ -82,7 +133,8 @@ function gable(width: number, depth: number, rise: number) {
   const g = new THREE.ExtrudeGeometry(s, { depth: width, bevelEnabled: false })
   g.translate(0, 0, -width / 2)
   g.rotateY(Math.PI / 2)
-  return g
+  g.computeVertexNormals()
+  return metricUV(g)
 }
 
 export class World {
@@ -161,8 +213,8 @@ export class World {
 
   private boundary() {
     const r = this.r
-    const wood = lambert(0xb08a5e)
-    const post = new THREE.BoxGeometry(0.12, 1.3, 0.12)
+    const wood = surface('wood', 0xd9c7ad)
+    const post = metricUV(new THREE.BoxGeometry(0.12, 1.3, 0.12))
     const y = T.yard
     const back = y.z0 - 0.5
     const run = (x0: number, z0: number, x1: number, z1: number) => {
@@ -175,7 +227,7 @@ export class World {
         add(this.root, p, true, false)
       }
       for (const h of [0.45, 1.05]) {
-        const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 0.1, 0.06), wood)
+        const rail = new THREE.Mesh(metricUV(new THREE.BoxGeometry(len, 0.1, 0.06)), wood)
         rail.position.set((x0 + x1) / 2, h, (z0 + z1) / 2)
         rail.rotation.y = -Math.atan2(z1 - z0, x1 - x0)
         add(this.root, rail, true, false)
@@ -201,7 +253,7 @@ export class World {
     }
     const trunk = new THREE.CylinderGeometry(0.25, 0.35, 3, 7)
     trunk.translate(0, 1.5, 0)
-    const bark = lambert(0x5f4630)
+    const bark = surface('bark', 0xb8a898, 0.95)
     for (let x = y.x0 - 6; x <= y.x1 + 6; x += 4 + r() * 3) {
       const t = new THREE.Group()
       add(t, new THREE.Mesh(trunk, bark), true, false)
@@ -218,9 +270,9 @@ export class World {
 
   private house() {
     const h = new THREE.Group()
-    const wall = lambert(0xefe6d2)
-    const trim = lambert(0xffffff)
-    const roof = lambert(0x7a4a3a)
+    const wall = surface('plaster', 0xfff8ec, 0.92)
+    const trim = lambert(0xf4f1ea)
+    const roof = surface('roof', 0xd0a090, 0.8)
     const W = 9
     const D = 5.6
     const H = 3
@@ -231,7 +283,7 @@ export class World {
     add(h, box(0.7, 1.6, 0.7, lambert(0x9a5b47), 2.4, H + 1.6, -0.8))
     // Front: a door, four windows, a step and a little porch roof.
     const front = D / 2 + 0.03
-    add(h, box(1.1, 2.1, 0.08, lambert(0x4f6b57), 0.8, 1.05, front))
+    add(h, box(1.1, 2.1, 0.08, surface('wood', 0x7f9c86), 0.8, 1.05, front))
     for (const x of [-3.2, -1.4, 2.6]) {
       add(h, box(1.2, 1.1, 0.1, trim, x, 1.7, front), false)
       add(h, box(1.0, 0.9, 0.12, this.windows, x, 1.7, front + 0.01), false)
@@ -242,7 +294,7 @@ export class World {
     add(h, porch)
     // Window boxes full of flowers under the front windows.
     for (const x of [-3.2, -1.4, 2.6]) {
-      add(h, box(1.2, 0.22, 0.25, lambert(0x8c5a3c), x, 1.05, front + 0.14))
+      add(h, box(1.2, 0.22, 0.25, surface('wood', 0xc09070), x, 1.05, front + 0.14))
       for (let i = 0; i < 5; i++) {
         const f = new THREE.Mesh(new THREE.IcosahedronGeometry(0.09, 0), lambert([0xd8432f, 0xf2c14e, 0xe48fb0][i % 3]))
         f.position.set(x - 0.45 + i * 0.22, 1.22, front + 0.16)
@@ -288,8 +340,8 @@ export class World {
     top.position.set(cx, 0.74, cz)
     add(this.root, top)
     for (const dx of [-0.85, 0.85]) {
-      add(this.root, box(0.45, 0.06, 0.45, lambert(0x8f6a45), cx + dx, 0.45, cz))
-      add(this.root, box(0.45, 0.5, 0.06, lambert(0x8f6a45), cx + dx * 1.25, 0.7, cz))
+      add(this.root, box(0.45, 0.06, 0.45, surface('wood', 0xd8b890), cx + dx, 0.45, cz))
+      add(this.root, box(0.45, 0.5, 0.06, surface('wood', 0xd8b890), cx + dx * 1.25, 0.7, cz))
     }
     const pot = new THREE.CylinderGeometry(0.32, 0.24, 0.5, 12)
     pot.translate(0, 0.25, 0)
@@ -366,7 +418,7 @@ export class World {
         const n = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.75)
         for (let k = 0; k < n; k++) {
           const t = k / n
-          const s = new THREE.Mesh(stone, paving(new THREE.Color().setHSL(0.08, 0.08, 0.58 + r() * 0.12)))
+          const s = new THREE.Mesh(stone, fieldStone(new THREE.Color().setHSL(0.08, 0.07, 0.42 + r() * 0.1)))
           s.position.set(x0 + (x1 - x0) * t + (r() - 0.5) * 0.15, 0.03, z0 + (z1 - z0) * t + (r() - 0.5) * 0.15)
           s.scale.set(0.9 + r() * 0.3, 1, 0.8 + r() * 0.3)
           s.rotation.y = r() * 3
@@ -381,11 +433,11 @@ export class World {
     const g = new THREE.Group()
     const W = s.x1 - s.x0 - 0.4
     const D = s.z1 - s.z0 - 0.6
-    add(g, box(W, 2.2, D, lambert(0x6f8f74), 0, 1.1, 0))
-    const roof = box(W + 0.4, 0.12, D + 0.5, lambert(0x5b4636), 0, 2.45, 0)
+    add(g, box(W, 2.2, D, surface('wood', 0x8fb898), 0, 1.1, 0))
+    const roof = box(W + 0.4, 0.12, D + 0.5, surface('wood', 0x6a5a50), 0, 2.45, 0)
     roof.rotation.x = -0.18
     add(g, roof)
-    add(g, box(0.9, 1.8, 0.06, lambert(0xe8e0cc), -0.5, 0.9, D / 2 + 0.03))
+    add(g, box(0.9, 1.8, 0.06, surface('wood', 0xf0e8d8), -0.5, 0.9, D / 2 + 0.03))
     add(g, box(0.6, 0.5, 0.06, this.windows, 0.9, 1.4, D / 2 + 0.03), false)
     // A watering can by the door: a nod to the job you're doing instead.
     const can = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.3, 12), lambert(0x6d8c9c))
@@ -401,7 +453,8 @@ export class World {
     const g = new THREE.Group()
     const trunk = new THREE.CylinderGeometry(0.35, 0.55, o.crownHeight, 9)
     trunk.translate(0, o.crownHeight / 2, 0)
-    add(g, new THREE.Mesh(trunk, lambert(0x5c4330)))
+    const oakBark = surface('bark', 0xb0a090, 0.95)
+    add(g, new THREE.Mesh(trunk, oakBark))
     const crowns = [foliage(1), foliage(2.2), foliage(4.1)]
     for (let i = 0; i < 9; i++) {
       const crown = crowns[i % 3]
@@ -430,7 +483,7 @@ export class World {
     const stone = new THREE.DodecahedronGeometry(0.17, 0)
     for (let i = 0; i < 30; i++) {
       const a = (i / 30) * Math.PI * 2
-      const st = new THREE.Mesh(stone, lambert(new THREE.Color().setHSL(0.1, 0.06, 0.5 + r() * 0.15)))
+      const st = new THREE.Mesh(stone, fieldStone(new THREE.Color().setHSL(0.1, 0.06, 0.36 + r() * 0.12), false))
       st.position.set(x + Math.cos(a) * (radius + 0.1), 0.05, z + Math.sin(a) * (radius + 0.1))
       st.rotation.set(r() * 3, r() * 3, r() * 3)
       st.scale.set(1 + r() * 0.5, 0.6, 1 + r() * 0.4)
@@ -495,7 +548,7 @@ export class World {
     this.root.add(bath)
 
     // A bench looking over the pond.
-    const wood = lambert(0x8f6a45)
+    const wood = surface('wood', 0xd0b08a)
     const bench = new THREE.Group()
     add(bench, box(1.6, 0.06, 0.45, wood, 0, 0.45, 0))
     add(bench, box(1.6, 0.4, 0.06, wood, 0, 0.75, -0.2))

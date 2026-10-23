@@ -476,6 +476,34 @@ export const T = {
     spreadPerKey: 0.15,
   },
 
+  /**
+   * The look: light, atmosphere and the final colour grade. Grades are applied
+   * after tone mapping; `high` multiplies the brightest tones and `low` is
+   * added to the darkest (display-space RGB, 0..1).
+   */
+  look: {
+    exposure: 1.0,
+    sun: 4.2,
+    /** Sky fill from the hemisphere light and the sky's own reflections, at noon. */
+    fill: 0.38,
+    sky: 0.38,
+    bloom: { strength: 0.22, radius: 0.55, threshold: 0.9 },
+    /** Clear-day haze: where it starts and where it hides everything, metres from the camera. */
+    haze: { near: 45, far: 480 },
+    /** Metres covered by one repeat of each photographed surface. */
+    tile: { wood: 1.6, roof: 2.2, plaster: 2.5 },
+    grades: {
+      clear: { saturation: 1.12, contrast: 0.3, high: [1.0, 0.97, 0.9], low: [0.01, 0.035, 0.07], vignette: 0.3 },
+      overcast: { saturation: 1.0, contrast: 0.16, high: [0.97, 0.98, 1.0], low: [0.03, 0.045, 0.06], vignette: 0.32 },
+      rain: { saturation: 0.9, contrast: 0.2, high: [0.93, 0.96, 1.0], low: [0.02, 0.04, 0.06], vignette: 0.38 },
+      fog: { saturation: 0.85, contrast: 0.04, high: [0.98, 0.98, 0.97], low: [0.08, 0.09, 0.1], vignette: 0.24 },
+      snow: { saturation: 0.95, contrast: 0.14, high: [0.97, 0.98, 1.0], low: [0.02, 0.04, 0.08], vignette: 0.28 },
+      dusk: { saturation: 1.25, contrast: 0.22, high: [1.0, 0.88, 0.72], low: [0.05, 0.02, 0.07], vignette: 0.36 },
+      night: { saturation: 0.85, contrast: 0.18, high: [0.85, 0.9, 1.0], low: [0.0, 0.015, 0.05], vignette: 0.5 },
+      storm: { saturation: 0.75, contrast: 0.26, high: [0.9, 0.94, 1.0], low: [0.0, 0.01, 0.02], vignette: 0.5 },
+    },
+  },
+
   render: {
     /** How dark the cloud's shade looks, as a brightness multiplier. */
     shadeDarkness: 0.55,

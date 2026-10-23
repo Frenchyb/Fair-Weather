@@ -211,8 +211,8 @@ export function shaded<M extends THREE.Material>(material: M, fx: GroundFx = 'pl
           `#include <color_fragment>
           vec4 fld = fwField(vShadeXZ);
           float n = fwNoise(vShadeXZ * 0.9) * 0.6 + fwNoise(vShadeXZ * 3.1) * 0.4;
-          vec3 parched = mix(vec3(0.10, 0.085, 0.035), vec3(0.15, 0.125, 0.055), n);
-          vec3 lush = mix(vec3(0.05, 0.12, 0.025), vec3(0.085, 0.17, 0.04), n);
+          vec3 parched = mix(vec3(0.1, 0.1, 0.04), vec3(0.15, 0.14, 0.055), n);
+          vec3 lush = mix(vec3(0.04, 0.115, 0.025), vec3(0.075, 0.17, 0.04), n);
           lush = mix(lush, vec3(0.1, 0.12, 0.03), uSeason.z * 0.5);
           lush = mix(lush, vec3(0.075, 0.085, 0.045), uSeason.w * 0.7);
           lush *= 1.0 + uSeason.x * 0.12;
@@ -257,17 +257,25 @@ export function shaded<M extends THREE.Material>(material: M, fx: GroundFx = 'pl
         .replace(
           '#include <color_fragment>',
           `#include <color_fragment>
-          vec3 parched = vec3(0.24, 0.20, 0.08);
-          vec3 lush = vec3(0.10, 0.25, 0.04);
+          vec3 parched = vec3(0.24, 0.25, 0.09);
+          vec3 lush = vec3(0.085, 0.245, 0.045);
           lush = mix(lush, vec3(0.22, 0.22, 0.06), uSeason.z * 0.5);
           lush = mix(lush, vec3(0.16, 0.16, 0.08), uSeason.w * 0.7);
           lush *= 1.0 + uSeason.x * 0.1;
           vec3 blade = mix(parched, lush, smoothstep(0.0, 1.0, vGreen));
-          blade *= mix(0.55, 1.15, vTip);
+          blade *= mix(0.7, 1.15, vTip);
           // Laid-over grass catches the light along its length, like a mown stripe.
           blade = mix(blade, blade * 1.45 + vec3(0.03, 0.04, 0.0), clamp(vLaid * 1.2, 0.0, 0.6));
           diffuseColor.rgb *= blade;`,
         )
+      // A blade's back face would turn its normal to the ground and go black; a lawn is lit from above either side.
+      fs = fs.replace(
+        '#include <normal_fragment_begin>',
+        `#include <normal_fragment_begin>
+        #ifdef DOUBLE_SIDED
+          normal *= faceDirection;
+        #endif`,
+      )
     } else if (fx === 'foliage') {
       fs = fs.replace('#include <color_fragment>', `#include <color_fragment>\n${TURN}`)
     } else if (fx === 'evergreen') {
