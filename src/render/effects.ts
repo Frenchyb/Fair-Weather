@@ -69,19 +69,38 @@ export class Effects {
     }
     scene.add(this.fireflies)
 
-    const wing = new THREE.CircleGeometry(0.09, 8)
+    // A right wing, fore and hind, lying flat and reaching out along +x, darker at the edge.
+    const outline = new THREE.Shape()
+    outline.moveTo(0, 0.005)
+    outline.bezierCurveTo(0.03, 0.06, 0.1, 0.075, 0.11, 0.04)
+    outline.bezierCurveTo(0.115, 0.015, 0.06, 0.0, 0.05, -0.005)
+    outline.bezierCurveTo(0.09, -0.02, 0.085, -0.075, 0.05, -0.07)
+    outline.bezierCurveTo(0.02, -0.065, 0.005, -0.03, 0, -0.01)
+    const wing = new THREE.ShapeGeometry(outline, 6)
+    wing.rotateX(-Math.PI / 2)
+    const wp = wing.attributes.position
+    const shade: number[] = []
+    for (let k = 0; k < wp.count; k++) {
+      const d = Math.hypot(wp.getX(k) / 0.11, wp.getZ(k) / 0.075)
+      const l = d > 0.85 ? 0.35 : 1 - d * 0.15
+      shade.push(l, l, l)
+    }
+    wing.setAttribute('color', new THREE.Float32BufferAttribute(shade, 3))
+    const thorax = new THREE.CapsuleGeometry(0.008, 0.05, 2, 6)
+    thorax.rotateX(Math.PI / 2)
+    const dark = new THREE.MeshStandardMaterial({ color: 0x2a2018 })
     for (let i = 0; i < T.render.butterflies; i++) {
       const color = [0xf0a030, 0xffffff, 0x6fa8e8, 0xf5d142][i % 4]
-      const mat = new THREE.MeshStandardMaterial({ color, side: THREE.DoubleSide })
+      const mat = new THREE.MeshStandardMaterial({ color, side: THREE.DoubleSide, vertexColors: true, roughness: 0.6 })
       const b = new THREE.Group()
       for (const side of [-1, 1]) {
         const pivot = new THREE.Group()
         const w = new THREE.Mesh(wing, mat)
-        w.position.x = side * 0.08
-        w.rotation.x = -Math.PI / 2
+        w.scale.x = side
         pivot.add(w)
         b.add(pivot)
       }
+      b.add(new THREE.Mesh(thorax, dark))
       b.visible = false
       scene.add(b)
       this.butterflies.push(b)

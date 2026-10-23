@@ -104,3 +104,16 @@ three.js, Vite, vitest. Concept and plan: `/mnt/project-files/weather-game/conce
   life-size robin is a speck from the usual height.
 - Grey days lower `toneMappingExposure`; the sky above is rarely in view from
   the usual pitch, so dull weather has to read from the light on the ground.
+- The final colour grade (`render/grade.ts`) runs **after** `OutputPass`, in
+  display space, and blends a grade per weather, dusk, night and storm from
+  `T.look.grades`. Tone mapping is AgX; the grade puts back the colour AgX takes out.
+- Grass blades are double-sided with normals pointing up. three.js flips the
+  normal on a back face, which turned every blade seen from behind black; the
+  grass shader undoes that flip. Keep it, or the lawn goes back to black streaks.
+- Plants are built from leaf, petal and frond outlines in `render/leaves.ts`,
+  welded into one mesh per plant (`Bundle`), with flowers and fruit separate so
+  they can open and ripen. Anything added to a plant's foliage needs a vertex
+  colour (`painted`), or it renders black under the vertex-coloured material.
+- Photographed wood, roof, plaster and bark are laid on in metres by
+  `metricUV`, so their repeat in `T.look.tile` is metres per tile. Boxes from
+  `box()` get it automatically.

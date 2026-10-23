@@ -1,17 +1,40 @@
 /**
- * The plants, built from simple shapes. What matters is that each kind
- * reads at a glance, that growth is visible, and that an unhappy plant droops
- * and fades while a happy one stands up green.
+ * The plants. Each is built from real leaf and petal outlines (see
+ * `leaves.ts`), welded into one mesh for its foliage, with flowers and fruit
+ * kept separate so they can open, set and ripen. What matters is that each
+ * kind reads at a glance, that growth is visible, and that an unhappy plant
+ * droops and fades while a happy one stands up green.
  */
 import * as THREE from 'three'
 import type { Plant } from '../sim/garden'
 import { T, type KindName } from '../tuning'
+import { Bundle, frond, leaf, lump, painted, seedHeadTexture, spike, starFlower, trumpet } from './leaves'
 import { shaded } from './shade'
+import { surfaces } from './textures'
+import { foliage } from './world'
 
-const blob = new THREE.IcosahedronGeometry(1, 1)
-const ball = new THREE.SphereGeometry(1, 12, 8)
-const stalk = new THREE.CylinderGeometry(1, 1, 1, 6)
+const ball = new THREE.SphereGeometry(1, 16, 12)
+const stalk = painted(new THREE.CylinderGeometry(0.8, 1, 1, 7))
 stalk.translate(0, 0.5, 0)
+const seedLump = lump(1, 4, 0.15)
+
+// Shapes shared by every plant of a kind.
+const SHAPES = {
+  tomatoLeaflet: leaf({ length: 1, width: 0.55, widest: 0.35, fold: 0.3, curl: 0.35, ruffle: 0.05 }),
+  lettuceLeaf: leaf({ length: 1, width: 0.9, widest: 0.62, fold: 0.35, curl: -0.15, ruffle: 0.09, shade: [1.15, 0.92] }, 12, 6),
+  lavenderLeaf: leaf({ length: 1, width: 0.12, widest: 0.5, fold: 0.2, curl: 0.1, shade: [0.85, 1.05] }, 4, 1),
+  sunflowerLeaf: leaf({ length: 1, width: 0.85, widest: 0.3, fold: 0.25, curl: 0.45, heart: true }, 10, 4),
+  sunflowerPetal: leaf({ length: 1, width: 0.32, widest: 0.45, fold: 0.15, curl: 0.12, shade: [0.85, 1.1] }, 5, 2),
+  heartLeaf: leaf({ length: 1, width: 0.95, widest: 0.32, fold: 0.2, curl: 0.3, heart: true }, 8, 4),
+  appleLeaf: leaf({ length: 1, width: 0.5, widest: 0.45, fold: 0.3, curl: 0.2 }, 5, 2),
+  fern: frond(0.85),
+  star: starFlower(),
+  blossom: starFlower(5, 0.45, 0.18),
+  spike: spike(),
+  trumpet: trumpet(),
+  fiddlehead: painted(new THREE.TorusGeometry(1, 0.35, 6, 12, Math.PI * 1.5)),
+}
+let seedHead: THREE.Texture | null = null
 
 const TIRED = new THREE.Color(0xa59a52)
 
@@ -29,13 +52,19 @@ const HEIGHT: Record<KindName, number> = {
 const ease = (t: number) => 1 - (1 - t) ** 2
 const ramp = (v: number, lo: number, hi: number) => Math.min(1, Math.max(0, (v - lo) / (hi - lo)))
 
-function lambert(color: number) {
-  return shaded(new THREE.MeshStandardMaterial({ color }))
+function lambert(color: number, roughness = 0.8) {
+  return shaded(new THREE.MeshStandardMaterial({ color, roughness }))
+}
+
+/** Petals and leaves are thin: lit from either side, coloured per vertex. */
+function sheet(color: number, roughness = 0.65) {
+  return shaded(new THREE.MeshStandardMaterial({ color, roughness, side: THREE.DoubleSide, vertexColors: true }))
 }
 
 function mesh(geo: THREE.BufferGeometry, mat: THREE.Material) {
   const m = new THREE.Mesh(geo, mat)
   m.castShadow = true
+  m.receiveShadow = true
   return m
 }
 
@@ -46,13 +75,18 @@ export class PlantView {
   private leaf: THREE.MeshStandardMaterial
   private healthy: THREE.Color
   private flowers: THREE.Object3D[] = []
-  private fruit: THREE.Mesh[] = []
+  private fruit: THREE.Object3D[] = []
   private fruitMat?: THREE.MeshStandardMaterial
   private seed: THREE.Mesh
   private glow?: THREE.MeshStandardMaterial
   private phase = Math.random() * Math.PI * 2
+  /** Leaves and stems, welded into one mesh once the plant is built. */
+  private green = new Bundle()
+  private r: () => number
 
   constructor(readonly kind: KindName) {
+    let seed = Math.floor(this.phase * 1000) + 7
+    this.r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
     this.root.add(this.body)
     const builders = {
       tomato: this.tomato,
@@ -64,19 +98,20 @@ export class PlantView {
       apple: this.apple,
     }
     const leafColor = {
-      tomato: 0x4f8a3a,
-      lettuce: 0x8cc152,
-      lavender: 0x8fa58a,
-      sunflower: 0x5c8f34,
-      fern: 0x4f9a46,
-      moonflower: 0x4a7d3a,
-      apple: 0x4f8a3a,
+      tomato: 0x3f7a2e,
+      lettuce: 0x86c04a,
+      lavender: 0x8fa287,
+      sunflower: 0x4d8a2c,
+      fern: 0x3f8a36,
+      moonflower: 0x3b6e30,
+      apple: 0x467f30,
     }[kind]
     this.healthy = new THREE.Color(leafColor)
-    this.leaf = lambert(leafColor)
+    this.leaf = sheet(leafColor)
     builders[kind].call(this)
+    if (!this.green.empty) this.body.add(mesh(this.green.build(), this.leaf))
 
-    this.seed = mesh(blob, lambert(0x5a4330))
+    this.seed = mesh(seedLump, lambert(0x5a4330, 0.95))
     this.seed.scale.set(0.12, 0.05, 0.12)
     this.root.add(this.seed)
   }
@@ -116,7 +151,7 @@ export class PlantView {
     if (this.fruitMat) {
       const set = ramp(p.growth, 0.82, 0.92)
       const ripe = ramp(p.growth, 0.9, 1)
-      this.fruitMat.color.setRGB(0.45 + 0.45 * ripe, 0.62 - 0.45 * ripe, 0.2 - 0.08 * ripe)
+      this.fruitMat.color.setRGB(0.45 + 0.45 * ripe, 0.62 - 0.5 * ripe, 0.2 - 0.12 * ripe)
       for (const [i, f] of this.fruit.entries()) {
         f.visible = set > 0 && keep(i, this.fruit.length)
         f.scale.setScalar(set * (f.userData.size as number))
@@ -124,36 +159,63 @@ export class PlantView {
     }
   }
 
+  /** A tapering stem from `from` to `to`, `r` thick at the base. */
+  private stem(from: THREE.Vector3, to: THREE.Vector3, r: number) {
+    const d = to.clone().sub(from)
+    const len = d.length()
+    const pitch = Math.asin(d.y / len) - Math.PI / 2
+    const yaw = Math.atan2(d.x, d.z)
+    this.green.add(stalk, from.x, from.y, from.z, yaw, pitch, 0, new THREE.Vector3(r, len, r))
+  }
+
+  /** Something that opens with the flowers: `geo` at `size`, placed and turned. */
+  private bloom(geo: THREE.BufferGeometry, mat: THREE.Material, size: number, at: THREE.Vector3, rot?: THREE.Euler) {
+    const m = mesh(geo, mat)
+    m.userData.size = size
+    m.position.copy(at)
+    if (rot) m.rotation.copy(rot)
+    this.flowers.push(m)
+    this.body.add(m)
+    return m
+  }
+
   private tomato() {
-    const stem = mesh(stalk, this.leaf)
-    stem.scale.set(0.035, 1.05, 0.035)
-    this.body.add(stem)
+    const r = this.r
+    this.stem(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0.02, 1.05, -0.01), 0.03)
     const cane = mesh(stalk, lambert(0x8a6a44))
-    cane.scale.set(0.018, 1.25, 0.018)
+    cane.scale.set(0.016, 1.25, 0.016)
     cane.position.set(0.09, 0, -0.04)
     this.root.add(cane)
-    for (let i = 0; i < 9; i++) {
+    // Compound leaves: a stalk with leaflets in pairs and one at the end.
+    for (let i = 0; i < 11; i++) {
       const a = i * 2.4
-      const y = 0.18 + i * 0.1
-      const leaf = mesh(blob, this.leaf)
-      const s = 0.22 - i * 0.01
-      leaf.scale.set(s, s * 0.22, s * 0.55)
-      leaf.position.set(Math.cos(a) * s * 0.9, y, Math.sin(a) * s * 0.9)
-      leaf.rotation.y = -a
-      leaf.rotation.z = -0.25
-      this.body.add(leaf)
+      const y = 0.12 + i * 0.085
+      const len = 0.42 - i * 0.018
+      const dir = new THREE.Vector3(Math.sin(a), 0.25 - i * 0.02, Math.cos(a)).normalize()
+      const base = new THREE.Vector3(0, y, 0)
+      const tip = base.clone().addScaledVector(dir, len)
+      this.stem(base, tip, 0.008)
+      for (let k = 1; k <= 3; k++) {
+        const at = base.clone().addScaledVector(dir, (len * k) / 3.3)
+        const s = 0.1 + 0.045 * (k / 3)
+        for (const side of [-1, 1]) this.green.add(SHAPES.tomatoLeaflet, at.x, at.y, at.z, a + side * 1.2, -0.15, side * 0.4, s)
+      }
+      this.green.add(SHAPES.tomatoLeaflet, tip.x, tip.y, tip.z, a, -0.2 - r() * 0.2, 0, 0.15)
     }
-    const yellow = lambert(0xf3d34a)
-    this.fruitMat = lambert(0x6f9e33)
+    const yellow = sheet(0xf3d34a, 0.6)
+    this.fruitMat = shaded(new THREE.MeshStandardMaterial({ color: 0x6f9e33, roughness: 0.28 }))
+    const calyx = sheet(0x3f7a2e)
     for (let i = 0; i < 6; i++) {
       const a = i * 2.1 + 0.5
       const y = 0.45 + (i % 3) * 0.18
-      const flower = mesh(ball, yellow)
-      flower.userData.size = 0.045
-      flower.position.set(Math.cos(a) * 0.2, y + 0.08, Math.sin(a) * 0.2)
-      this.flowers.push(flower)
-      this.body.add(flower)
-      const fruit = mesh(ball, this.fruitMat)
+      this.bloom(SHAPES.star, yellow, 0.05, new THREE.Vector3(Math.cos(a) * 0.2, y + 0.08, Math.sin(a) * 0.2), new THREE.Euler(Math.PI * 0.6, a, 0))
+      const fruit = new THREE.Group()
+      const tom = mesh(ball, this.fruitMat)
+      tom.scale.set(1, 0.85, 1)
+      const cap = mesh(SHAPES.star, calyx)
+      cap.position.y = 0.8
+      cap.scale.setScalar(0.45)
+      fruit.add(tom, cap)
       fruit.userData.size = 0.085
       fruit.position.set(Math.cos(a) * 0.17, y, Math.sin(a) * 0.17)
       this.fruit.push(fruit)
@@ -162,185 +224,175 @@ export class PlantView {
   }
 
   private lettuce() {
+    const r = this.r
+    // A rosette: broad ruffled outer leaves lying open, inner ones cupped and upright.
     const rings = [
-      { n: 7, r: 0.2, tilt: 1.15, s: 0.26 },
-      { n: 6, r: 0.11, tilt: 0.7, s: 0.2 },
-      { n: 4, r: 0.04, tilt: 0.25, s: 0.14 },
+      { n: 9, len: 0.34, lift: 0.3 },
+      { n: 8, len: 0.28, lift: 0.7 },
+      { n: 6, len: 0.2, lift: 1.1 },
     ]
     rings.forEach((ring, k) => {
       for (let i = 0; i < ring.n; i++) {
-        const a = (i / ring.n) * Math.PI * 2 + k * 0.4
-        const pivot = new THREE.Group()
-        pivot.rotation.y = -a
-        const leaf = mesh(blob, this.leaf)
-        leaf.scale.set(ring.s * 0.75, ring.s * 0.22, ring.s)
-        leaf.rotation.x = 0
-        leaf.position.set(0, ring.s * 0.6, 0)
-        const tilt = new THREE.Group()
-        tilt.position.x = ring.r
-        tilt.rotation.z = -ring.tilt
-        tilt.add(leaf)
-        leaf.rotation.set(0, Math.PI / 2, 0)
-        pivot.add(tilt)
-        this.body.add(pivot)
+        const a = (i / ring.n) * Math.PI * 2 + k * 0.45 + r() * 0.2
+        this.green.add(SHAPES.lettuceLeaf, 0, 0.02 + k * 0.03, 0, a, ring.lift + r() * 0.15, (r() - 0.5) * 0.3, ring.len * (0.9 + r() * 0.2))
       }
     })
     // A full, pale heart once it has headed up.
-    const heart = mesh(blob, lambert(0xc8e38a))
-    heart.userData.size = 0.16
-    heart.position.y = 0.17
+    const heart = new THREE.Group()
+    const pale = sheet(0xc8e38a, 0.6)
+    const b = new Bundle()
+    for (let i = 0; i < 6; i++) b.add(SHAPES.lettuceLeaf, 0, 0, 0, i * 1.05, 1.35, 0, 0.75)
+    heart.add(mesh(b.build(), pale))
+    heart.userData.size = 0.2
+    heart.position.y = 0.06
     this.flowers.push(heart)
     this.body.add(heart)
   }
 
   private lavender() {
-    const purple = lambert(0x8e6bc4)
-    const spike = new THREE.CapsuleGeometry(0.4, 1.6, 3, 6)
-    for (let i = 0; i < 22; i++) {
+    const r = this.r
+    const purple = sheet(0x8e6bc4, 0.75)
+    // A silvery mound of narrow leaves.
+    for (let i = 0; i < 46; i++) {
+      const a = i * 2.4
+      this.green.add(SHAPES.lavenderLeaf, Math.cos(a) * 0.05, 0.02 + (i % 4) * 0.03, Math.sin(a) * 0.05, Math.PI / 2 - a, 0.5 + r() * 0.7, 0, 0.14 + r() * 0.06)
+    }
+    for (let i = 0; i < 24; i++) {
       const a = i * 2.4
       const lean = 0.12 + (i % 5) * 0.07
       const h = 0.55 + (i % 4) * 0.08
-      const pivot = new THREE.Group()
-      pivot.rotation.set(Math.sin(a) * lean, 0, Math.cos(a) * lean)
-      const stem = mesh(stalk, this.leaf)
-      stem.scale.set(0.012, h, 0.012)
-      pivot.add(stem)
-      const flower = mesh(spike, purple)
-      flower.userData.size = 0.045
-      flower.position.y = h + 0.03
-      pivot.add(flower)
-      this.flowers.push(flower)
-      this.body.add(pivot)
+      const tip = new THREE.Vector3(Math.cos(a) * lean * h, h, Math.sin(a) * lean * h)
+      this.stem(new THREE.Vector3(0, 0.05, 0), tip, 0.006)
+      this.bloom(SHAPES.spike, purple, 0.13, tip, new THREE.Euler(Math.sin(a) * lean, 0, -Math.cos(a) * lean))
     }
-    const mound = mesh(blob, this.leaf)
-    mound.scale.set(0.22, 0.12, 0.22)
-    mound.position.y = 0.06
-    this.body.add(mound)
   }
 
   private sunflower() {
-    const stem = mesh(stalk, this.leaf)
-    stem.scale.set(0.05, 2.3, 0.05)
-    this.body.add(stem)
-    for (let i = 0; i < 8; i++) {
+    const r = this.r
+    this.stem(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 2.32, 0.04), 0.045)
+    for (let i = 0; i < 9; i++) {
       const a = i * 2.4
-      const leaf = mesh(blob, this.leaf)
-      const sz = 0.28 - i * 0.015
-      leaf.scale.set(sz, sz * 0.15, sz * 0.75)
-      leaf.position.set(Math.cos(a) * sz, 0.3 + i * 0.24, Math.sin(a) * sz)
-      leaf.rotation.y = -a
-      leaf.rotation.z = -0.4
-      this.body.add(leaf)
+      const y = 0.3 + i * 0.22
+      const sz = 0.42 - i * 0.025
+      const out = new THREE.Vector3(Math.sin(a) * 0.08, y + 0.03, Math.cos(a) * 0.08)
+      this.stem(new THREE.Vector3(0, y, 0), out, 0.01)
+      this.green.add(SHAPES.sunflowerLeaf, out.x, out.y, out.z, a, 0.1 - r() * 0.2, 0, sz)
     }
     // The head faces south, towards you, as sunflowers in a border do.
     const head = new THREE.Group()
     head.position.set(0, 2.35, 0.08)
     head.rotation.x = 0.35
-    const petal = lambert(0xf5c518)
-    for (let i = 0; i < 16; i++) {
-      const a = (i / 16) * Math.PI * 2
-      const pm = mesh(blob, petal)
-      pm.scale.set(0.07, 0.17, 0.02)
-      pm.position.set(Math.cos(a) * 0.24, Math.sin(a) * 0.24, 0)
-      pm.rotation.z = a - Math.PI / 2
-      head.add(pm)
+    const petal = sheet(0xf5c518, 0.6)
+    const petals = new Bundle()
+    for (let i = 0; i < 26; i++) {
+      const a = (i / 26) * Math.PI * 2 + (i % 2) * 0.12
+      // Laid out in the head's own plane, which faces +z.
+      const g = SHAPES.sunflowerPetal.clone().rotateX(-Math.PI / 2 + 0.25 * (i % 2 ? 1 : 0.4)).rotateZ(a - Math.PI / 2)
+      petals.add(g, Math.cos(a) * 0.13, Math.sin(a) * 0.13, i % 2 ? -0.005 : 0.005, 0, 0, 0, 0.19 + (i % 3) * 0.015)
     }
-    const disc = mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.06, 18), lambert(0x5a3a1c))
-    disc.rotation.x = Math.PI / 2
+    head.add(mesh(petals.build(), petal))
+    seedHead ??= seedHeadTexture()
+    const discMat = lambert(0xffffff, 0.95)
+    discMat.map = seedHead
+    const disc = mesh(new THREE.CircleGeometry(0.16, 32), discMat)
+    disc.position.z = 0.02
     head.add(disc)
+    const back = mesh(new THREE.SphereGeometry(0.17, 16, 6, 0, Math.PI * 2, 0, Math.PI / 2), lambert(0x4d7a2c))
+    back.scale.set(1, 0.4, 1)
+    back.rotation.x = -Math.PI / 2
+    head.add(back)
     head.userData.size = 1
     this.flowers.push(head)
     this.body.add(head)
   }
 
   private fern() {
-    for (let i = 0; i < 11; i++) {
-      const a = (i / 11) * Math.PI * 2
-      const pivot = new THREE.Group()
-      pivot.rotation.y = -a
-      const arch = new THREE.Group()
-      arch.rotation.z = -0.7 - (i % 3) * 0.15
-      for (let k = 0; k < 4; k++) {
-        const seg = mesh(blob, this.leaf)
-        const sz = 0.16 - k * 0.025
-        seg.scale.set(sz * 0.45, 0.025, sz)
-        seg.rotation.y = Math.PI / 2
-        seg.position.set(0, 0.12 + k * 0.17, 0)
-        seg.rotation.x = k * 0.25
-        arch.add(seg)
-      }
-      pivot.add(arch)
-      this.body.add(pivot)
+    const r = this.r
+    for (let i = 0; i < 13; i++) {
+      const a = (i / 13) * Math.PI * 2 + r() * 0.3
+      this.green.add(SHAPES.fern, 0, 0.02, 0, a, (r() - 0.5) * 0.3, (r() - 0.5) * 0.3, 0.8 + r() * 0.35)
     }
     // New fronds uncurling at the heart once it's thriving.
     const curl = lambert(0x9ccc5a)
     for (let i = 0; i < 4; i++) {
-      const f = mesh(ball, curl)
-      f.userData.size = 0.05
-      f.position.set(Math.cos(i * 1.6) * 0.06, 0.32, Math.sin(i * 1.6) * 0.06)
-      this.flowers.push(f)
-      this.body.add(f)
+      this.bloom(
+        SHAPES.fiddlehead,
+        curl,
+        0.045,
+        new THREE.Vector3(Math.cos(i * 1.6) * 0.06, 0.3, Math.sin(i * 1.6) * 0.06),
+        new THREE.Euler(0, i * 1.6, 0),
+      )
     }
   }
 
   private moonflower() {
-    const mound = mesh(blob, this.leaf)
-    mound.scale.set(0.38, 0.28, 0.38)
-    mound.position.y = 0.2
-    this.body.add(mound)
-    for (let i = 0; i < 9; i++) {
+    const r = this.r
+    // A low tangle of vine: heart-shaped leaves on short stalks round a dark heart.
+    const core = lump(2, 3, 0.18)
+    this.green.add(core, 0, 0.18, 0, 0, 0, 0, new THREE.Vector3(0.3, 0.2, 0.3))
+    for (let i = 0; i < 26; i++) {
       const a = i * 2.4
-      const leaf = mesh(blob, this.leaf)
-      leaf.scale.set(0.16, 0.04, 0.16)
-      leaf.position.set(Math.cos(a) * 0.32, 0.25 + (i % 3) * 0.12, Math.sin(a) * 0.32)
-      this.body.add(leaf)
+      const d = 0.12 + (i % 3) * 0.1
+      const y = 0.12 + (i % 4) * 0.09
+      this.green.add(SHAPES.heartLeaf, Math.cos(a) * d, y, Math.sin(a) * d, Math.PI / 2 - a, 0.1 + r() * 0.4, (r() - 0.5) * 0.5, 0.16 + r() * 0.06)
     }
     // White trumpets that open only after dark, and glow a little.
-    this.glow = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xe8f0ff, emissiveIntensity: 0 })
-    const trumpet = new THREE.ConeGeometry(1, 1, 10, 1, true)
+    this.glow = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xe8f0ff, emissiveIntensity: 0, side: THREE.DoubleSide, vertexColors: true })
     for (let i = 0; i < 6; i++) {
       const a = i * 1.05
-      const f = mesh(trumpet, this.glow)
-      f.userData.size = 0.14
-      f.position.set(Math.cos(a) * 0.3, 0.45 + (i % 2) * 0.12, Math.sin(a) * 0.3)
-      f.rotation.set(Math.PI + Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6)
-      this.flowers.push(f)
-      this.body.add(f)
+      this.bloom(
+        SHAPES.trumpet,
+        this.glow,
+        0.15,
+        new THREE.Vector3(Math.cos(a) * 0.28, 0.42 + (i % 2) * 0.12, Math.sin(a) * 0.28),
+        new THREE.Euler(Math.sin(a) * 0.7, 0, -Math.cos(a) * 0.7),
+      )
     }
   }
 
   private apple() {
-    const trunk = mesh(new THREE.CylinderGeometry(0.11, 0.17, 1.8, 8), lambert(0x6b4f36))
+    const r = this.r
+    const bark = lambert(0xb0a090, 0.95)
+    bark.map = surfaces.bark.map
+    bark.normalMap = surfaces.bark.normal
+    const trunk = mesh(new THREE.CylinderGeometry(0.11, 0.17, 1.8, 10), bark)
     trunk.position.y = 0.9
     this.body.add(trunk)
+    // Boughs up into the crown.
+    for (let i = 0; i < 4; i++) {
+      const a = i * 1.6 + 0.4
+      const limb = mesh(new THREE.CylinderGeometry(0.04, 0.07, 1, 7), bark)
+      limb.position.set(Math.cos(a) * 0.22, 1.95, Math.sin(a) * 0.22)
+      limb.rotation.set(Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6)
+      this.body.add(limb)
+    }
     const crownPositions: [number, number, number, number][] = [
-      [0, 2.5, 0, 1.05],
-      [0.7, 2.2, 0.2, 0.75],
-      [-0.65, 2.25, -0.1, 0.8],
-      [0.1, 2.3, -0.65, 0.75],
-      [-0.15, 2.15, 0.7, 0.7],
+      [0, 2.55, 0, 1.0],
+      [0.7, 2.25, 0.2, 0.72],
+      [-0.65, 2.3, -0.1, 0.78],
+      [0.1, 2.35, -0.65, 0.72],
+      [-0.15, 2.2, 0.7, 0.68],
     ]
-    for (const [x, y, z, sz] of crownPositions) {
-      const c = mesh(blob, this.leaf)
-      c.position.set(x, y, z)
-      c.scale.set(sz, sz * 0.85, sz)
-      this.body.add(c)
+    const crowns = [foliage(11), foliage(12.5), foliage(14)]
+    crownPositions.forEach(([x, y, z, sz], i) => this.green.add(crowns[i % 3], x, y, z, r() * 6, 0, 0, new THREE.Vector3(sz, sz * 0.85, sz)))
+    // A fringe of real leaves round the crown, so its edge reads as leaves.
+    for (let i = 0; i < 70; i++) {
+      const a = i * 2.4
+      const up = (r() - 0.3) * 1.2
+      const d = 1.05 + r() * 0.15
+      this.green.add(SHAPES.appleLeaf, Math.cos(a) * d * Math.cos(up), 2.35 + Math.sin(up) * d * 0.8, Math.sin(a) * d * Math.cos(up), Math.PI / 2 - a, up * 0.5 - 0.3, 0, 0.18)
     }
     // Blossom first, then apples that redden as they ripen.
-    const blossom = lambert(0xf7d7e0)
-    this.fruitMat = lambert(0x8fb83a)
+    const blossom = sheet(0xf7d7e0, 0.6)
+    this.fruitMat = shaded(new THREE.MeshStandardMaterial({ color: 0x8fb83a, roughness: 0.35 }))
     for (let i = 0; i < 18; i++) {
       const a = i * 2.4
       const up = 0.3 + (i % 5) * 0.12
-      const r = 1.05
-      const x = Math.cos(a) * r * Math.cos(up)
-      const z = Math.sin(a) * r * Math.cos(up)
-      const y = 2.3 + Math.sin(up) * r * 0.7
-      const b = mesh(ball, blossom)
-      b.userData.size = 0.09
-      b.position.set(x, y + 0.05, z)
-      this.flowers.push(b)
-      this.body.add(b)
+      const rr = 1.08
+      const x = Math.cos(a) * rr * Math.cos(up)
+      const z = Math.sin(a) * rr * Math.cos(up)
+      const y = 2.3 + Math.sin(up) * rr * 0.7
+      this.bloom(SHAPES.blossom, blossom, 0.08, new THREE.Vector3(x, y + 0.05, z), new THREE.Euler(Math.sin(a) * 0.9, 0, -Math.cos(a) * 0.9))
       if (i % 2 === 0) {
         const f = mesh(ball, this.fruitMat)
         f.userData.size = 0.12

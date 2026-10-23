@@ -149,7 +149,8 @@ export class World {
   private r = rng(7)
 
   constructor() {
-    this.windows = new THREE.MeshStandardMaterial({ color: 0x9cc3d6, emissive: 0xffc070, emissiveIntensity: 0 })
+    // Glass: dark and glossy, so it shows the sky rather than reading as pale blue paint.
+    this.windows = new THREE.MeshStandardMaterial({ color: 0x55707e, emissive: 0xffc070, emissiveIntensity: 0, roughness: 0.08, metalness: 0.4 })
     this.boundary()
     this.house()
     this.paths()
@@ -270,13 +271,15 @@ export class World {
 
   private house() {
     const h = new THREE.Group()
-    const wall = surface('plaster', 0xfff8ec, 0.92)
+    const wall = surface('plaster', 0xffffff, 0.92)
     const trim = lambert(0xf4f1ea)
     const roof = surface('roof', 0xd0a090, 0.8)
     const W = 9
     const D = 5.6
     const H = 3
     add(h, box(W, H, D, wall, 0, H / 2, 0))
+    // A stone plinth along the foot of the walls.
+    add(h, box(W + 0.06, 0.4, D + 0.06, fieldStone(new THREE.Color(0x9a9286), false), 0, 0.2, 0))
     const r = new THREE.Mesh(gable(W + 0.6, D + 0.8, 2.2), roof)
     r.position.y = H
     add(h, r)

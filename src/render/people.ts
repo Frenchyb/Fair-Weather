@@ -93,7 +93,13 @@ function figure(rose: boolean, scene: THREE.Scene): Figure {
   }
   const armL = limb(top, 0.6, 0.06, -0.21, 0.56)
   const armR = limb(top, 0.6, 0.06, 0.21, 0.56)
-  for (const a of [armL, armR]) a.add(part(ball, std(skin), 0, -0.62, 0, 0.05, 0.05, 0.05))
+  for (const a of [armL, armR]) {
+    a.add(part(ball, std(skin), 0, -0.62, 0, 0.05, 0.055, 0.045))
+    // A rounded shoulder, so the arm grows out of the body rather than hanging beside it.
+    a.add(part(ball, std(top), 0, -0.02, 0, 0.075, 0.08, 0.08))
+  }
+  head.add(part(leg, std(skin), 0, 0.02, 0, 0.045, 0.06, 0.045))
+  head.add(part(ball, std(skin), 0, 0.1, 0.11, 0.022, 0.025, 0.025))
   hips.add(armL, armR)
 
   // Things to carry, held in the right hand (or both, for the basket).

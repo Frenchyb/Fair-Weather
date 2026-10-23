@@ -4,6 +4,7 @@
  * not detail.
  */
 import * as THREE from 'three'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { T } from '../tuning'
 import { foliage } from './world'
 import { shaded } from './shade'
@@ -20,11 +21,12 @@ export function part(geo: THREE.BufferGeometry, mat: THREE.Material, x: number, 
   return m
 }
 
-export const ball = new THREE.SphereGeometry(1, 12, 9)
-export const cone = new THREE.ConeGeometry(1, 1, 8)
+export const ball = new THREE.SphereGeometry(1, 18, 12)
+export const cone = new THREE.ConeGeometry(1, 1, 12)
 cone.rotateX(Math.PI / 2)
-export const block = new THREE.BoxGeometry(1, 1, 1)
-export const leg = new THREE.CylinderGeometry(1, 0.8, 1, 6)
+// Rounded, so bodies, wings and clothes read as soft shapes rather than boxes.
+export const block = new RoundedBoxGeometry(1, 1, 1, 3, 0.22)
+export const leg = new THREE.CylinderGeometry(1, 0.8, 1, 10)
 leg.translate(0, -0.5, 0)
 
 /** A songbird facing +z: a robin, a blackbird or a sparrow. */
