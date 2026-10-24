@@ -43,6 +43,8 @@ export class Input {
   /** Set on the first press, so audio can start inside a user gesture. */
   onFirstPress?: () => void
   onToggleJournal?: () => void
+  /** P: the performance overlay. */
+  onTogglePerf?: () => void
   /** A weather or season asked for since last read: keys 0-5 and 6-9, or the buttons. */
   weatherAsked: WeatherKind | 'auto' | null = null
   seasonAsked: Season | 'auto' | null = null
@@ -119,6 +121,8 @@ export class Input {
         this.press()
       } else if (e.code === 'KeyJ' && !e.repeat) {
         this.onToggleJournal?.()
+      } else if (e.code === 'KeyP' && !e.repeat) {
+        this.onTogglePerf?.()
       } else if (PAN_KEYS[e.code] || e.code === 'KeyQ' || e.code === 'KeyE') {
         e.preventDefault()
         this.keys.add(e.code)

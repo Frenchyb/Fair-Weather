@@ -504,6 +504,9 @@ export const T = {
     },
   },
 
+  /** The performance budget the overlay (P) checks against: what a phone held sideways should manage. */
+  perf: { fps: 30, drawCalls: 100, triangles: 500000 },
+
   render: {
     /** How dark the cloud's shade looks, as a brightness multiplier. */
     shadeDarkness: 0.55,
@@ -526,6 +529,10 @@ export const T = {
   },
 
   audio: {
+    /** Seconds each looped bed of noise runs before it repeats; different lengths so the repeats never line up. */
+    loops: { rain: 5.3, patter: 4.1, wind: 7.1, roof: 6.2 },
+    /** Every small sound varies by up to this much in pitch and volume, so repeats never sound copied. */
+    vary: { pitch: 0.08, gain: 0.15 },
     rainGain: 0.22,
     windGain: 0.35,
     rainFade: 0.6,

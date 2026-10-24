@@ -9,6 +9,7 @@ import type { Garden } from '../sim/garden'
 import { T } from '../tuning'
 import { lumpy } from './cloud'
 import { SKY_CLOUDS, seasonUniforms } from './shade'
+import { weld } from './batch'
 import { rng } from './world'
 
 export class DriftView {
@@ -30,6 +31,7 @@ export class DriftView {
         p.scale.set(s * 1.2, s * 0.75, s)
         g.add(p)
       }
+      weld(g)
       g.visible = false
       scene.add(g)
       this.groups.push(g)

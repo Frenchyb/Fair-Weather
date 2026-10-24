@@ -136,7 +136,7 @@ export function starFlower(petals = 5, cupped = 0.3, centre = 0.25) {
 /** A lavender spike: whorls of tiny florets up a unit-tall stem, fuller at the base. */
 export function spike(whorls = 7) {
   const b = new Bundle()
-  const bud = painted(new THREE.SphereGeometry(0.2, 6, 4))
+  const bud = painted(new THREE.SphereGeometry(0.2, 5, 3))
   for (let w = 0; w < whorls; w++) {
     const t = w / (whorls - 1)
     const r = 0.22 * (1 - t * 0.6)

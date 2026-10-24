@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Fair Weather</title>
     <style>
       :root {
@@ -10,6 +10,10 @@
         --paper: rgba(252, 249, 240, 0.58);
         --edge: rgba(255, 255, 255, 0.55);
         --moss: #56704a;
+        /* Keep the HUD clear of a phone's notch and home bar in landscape. */
+        --sl: env(safe-area-inset-left, 0px);
+        --sr: env(safe-area-inset-right, 0px);
+        --sb: env(safe-area-inset-bottom, 0px);
       }
       html,
       body {
@@ -31,6 +35,7 @@
         top: 0;
         width: 100vw;
         height: 100vh;
+        height: 100dvh;
         display: block;
         touch-action: none;
       }
@@ -49,7 +54,7 @@
         pointer-events: none;
       }
       #hint {
-        left: 16px;
+        left: calc(16px + var(--sl));
         top: 16px;
         max-width: 300px;
         transition: opacity 1.2s;
@@ -59,11 +64,11 @@
         font-style: italic;
       }
       #count {
-        right: 16px;
+        right: calc(16px + var(--sr));
         top: 16px;
       }
       #journal {
-        right: 16px;
+        right: calc(16px + var(--sr));
         top: 62px;
         width: 290px;
         pointer-events: auto;
@@ -116,15 +121,15 @@
       }
       #tip {
         left: 50%;
-        bottom: 18px;
+        bottom: calc(18px + var(--sb));
         transform: translateX(-50%);
         opacity: 0;
         transition: opacity 0.25s;
         white-space: nowrap;
       }
       #storm {
-        left: 16px;
-        bottom: 18px;
+        left: calc(16px + var(--sl));
+        bottom: calc(18px + var(--sb));
         font-size: 13px;
         letter-spacing: 0.04em;
         padding: 6px 12px 9px;
@@ -177,8 +182,8 @@
         opacity: 0.75;
       }
       #sky {
-        right: 16px;
-        bottom: 18px;
+        right: calc(16px + var(--sr));
+        bottom: calc(18px + var(--sb));
         pointer-events: auto;
         display: grid;
         gap: 5px;
@@ -218,6 +223,16 @@
         color: #f7f4e8;
         box-shadow: 0 1px 4px rgba(40, 60, 30, 0.25);
       }
+      #perf {
+        display: none;
+        left: calc(16px + var(--sl));
+        top: 50%;
+        transform: translateY(-50%);
+        font: 12px/1.5 ui-monospace, Menlo, monospace;
+      }
+      #perf .over {
+        color: #a2321e;
+      }
       #sky kbd {
         font: inherit;
         font-size: 10px;
@@ -241,6 +256,19 @@
           display: none;
         }
       }
+      #portrait {
+        display: none;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        font-style: italic;
+      }
+      @media (orientation: portrait) and (pointer: coarse) {
+        #portrait {
+          display: block;
+        }
+      }
     </style>
   </head>
   <body>
@@ -255,6 +283,7 @@
       on the right has more to try.
     </div>
     <div id="count" class="card"></div>
+    <div id="perf" class="card"></div>
     <div id="journal" class="card">
       <div id="journal-head">Journal <span>(J)</span></div>
       <ul id="wishes"></ul>
@@ -266,6 +295,7 @@
       <div class="row" id="weather-row"><span class="label">Weather</span></div>
       <div class="row" id="season-row"><span class="label">Season</span></div>
     </div>
+    <div id="portrait" class="card">Turn your phone sideways to see the whole garden.</div>
     <div id="done" class="card">
       Full bloom. The bees have found your garden.
       <small>Stay as long as you like.</small>

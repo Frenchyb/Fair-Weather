@@ -7,6 +7,7 @@
 import * as THREE from 'three'
 import { T } from '../tuning'
 import { seasonUniforms, shaded } from './shade'
+import { weld } from './batch'
 import { rng } from './world'
 
 const SKY_VS = `
@@ -79,7 +80,6 @@ export class Horizon {
   readonly sky: THREE.ShaderMaterial
   private sails = new THREE.Group()
   private clouds: THREE.Group[] = []
-  private crowns!: THREE.InstancedMesh
   private cloudMat!: THREE.MeshStandardMaterial
 
   constructor() {
@@ -166,7 +166,7 @@ export class Horizon {
     const trunk = new THREE.CylinderGeometry(0.12, 0.18, 1, 5)
     trunk.translate(0, 0.5, 0)
     const crowns = new THREE.InstancedMesh(crown, shaded(new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true }), 'foliage'), n)
-    this.crowns = crowns
+
     const trunks = new THREE.InstancedMesh(trunk, new THREE.MeshStandardMaterial({ color: 0x4a3626 }), n)
     const m = new THREE.Matrix4()
     const c = new THREE.Color()
@@ -214,7 +214,7 @@ export class Horizon {
     // A screen of tall trees just beyond the back hedge.
     for (let x = T.yard.x0 - 30; x < T.yard.x1 + 30; x += 3 + r() * 4) plant(x, T.yard.z0 - 14 - r() * 10, 2 + r() * 1.2)
     crowns.count = trunks.count = i
-    crowns.castShadow = trunks.castShadow = true
+    // The countryside casts no shadows: the sun's shadow box covers the garden, and from the south they would fall away from it anyway.
     this.root.add(crowns, trunks)
   }
 
@@ -244,7 +244,6 @@ export class Horizon {
     const z = -150
     g.position.set(x, Horizon.height(x, z), z)
     g.rotation.y = 0.5
-    g.traverse((o) => (o.castShadow = true))
     this.root.add(g)
   }
 
@@ -271,7 +270,6 @@ export class Horizon {
     const z = -110
     house.position.set(x, Horizon.height(x, z), z)
     house.rotation.y = -0.4
-    house.traverse((o) => (o.castShadow = true))
     this.root.add(house)
   }
 
@@ -295,6 +293,7 @@ export class Horizon {
       const d = 220 + r() * 380
       g.position.set(Math.cos(a) * d, 60 + r() * 50, Math.sin(a) * d)
       g.userData.speed = 1 + r() * 1.5
+      weld(g)
       this.clouds.push(g)
       this.root.add(g)
     }
@@ -306,7 +305,7 @@ export class Horizon {
     this.cloudMat.color.setScalar(1 - grey * 0.45)
     this.cloudMat.emissive.setHex(0x8796a8).multiplyScalar(1 - grey * 0.5)
     for (const c of this.clouds) c.visible = grey < 0.85
-    this.crowns.castShadow = winter < 0.5
+    void winter
     this.sails.rotation.z -= dt * 0.35
     for (const c of this.clouds) {
       c.position.x += c.userData.speed * dt

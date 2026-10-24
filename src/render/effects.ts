@@ -18,7 +18,10 @@ export class Effects {
   private boltFor: unknown = null
   private fireflies: THREE.Points
   private flyHome: { x: number; z: number; phase: number }[] = []
+  /** Each butterfly's pose, kept off the scene; drawn through `wings` and `bodies`, two draw calls for all of them. */
   private butterflies: THREE.Group[] = []
+  private wings!: THREE.InstancedMesh
+  private bodies!: THREE.InstancedMesh
   private sparkle: THREE.Points
 
   constructor(scene: THREE.Scene, garden: Garden) {
@@ -89,9 +92,17 @@ export class Effects {
     const thorax = new THREE.CapsuleGeometry(0.008, 0.05, 2, 6)
     thorax.rotateX(Math.PI / 2)
     const dark = new THREE.MeshStandardMaterial({ color: 0x2a2018 })
-    for (let i = 0; i < T.render.butterflies; i++) {
-      const color = [0xf0a030, 0xffffff, 0x6fa8e8, 0xf5d142][i % 4]
-      const mat = new THREE.MeshStandardMaterial({ color, side: THREE.DoubleSide, vertexColors: true, roughness: 0.6 })
+    const flock = T.render.butterflies
+    this.wings = new THREE.InstancedMesh(wing, new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, vertexColors: true, roughness: 0.6 }), flock * 2)
+    this.bodies = new THREE.InstancedMesh(thorax, dark, flock)
+    this.wings.count = this.bodies.count = 0
+    this.wings.frustumCulled = this.bodies.frustumCulled = false
+    scene.add(this.wings, this.bodies)
+    const mat = this.wings.material
+    for (let i = 0; i < flock; i++) {
+      const color = new THREE.Color([0xf0a030, 0xffffff, 0x6fa8e8, 0xf5d142][i % 4])
+      this.wings.setColorAt(i * 2, color)
+      this.wings.setColorAt(i * 2 + 1, color)
       const b = new THREE.Group()
       for (const side of [-1, 1]) {
         const pivot = new THREE.Group()
@@ -102,7 +113,6 @@ export class Effects {
       }
       b.add(new THREE.Mesh(thorax, dark))
       b.visible = false
-      scene.add(b)
       this.butterflies.push(b)
     }
 
@@ -212,7 +222,16 @@ export class Effects {
       const flap = Math.sin(t * 18 + i) * 0.9
       ;(b.children[0] as THREE.Group).rotation.z = flap
       ;(b.children[1] as THREE.Group).rotation.z = -flap
+      b.updateMatrixWorld(true)
+      this.wings.setMatrixAt(i * 2, b.children[0].children[0].matrixWorld)
+      this.wings.setMatrixAt(i * 2 + 1, b.children[1].children[0].matrixWorld)
+      this.bodies.setMatrixAt(i, b.children[2].matrixWorld)
     })
+    // Those flying are always the first `want`, so the instance counts cover exactly them.
+    const flying = blooms.length > 0 ? want : 0
+    this.wings.count = flying * 2
+    this.bodies.count = flying
+    this.wings.instanceMatrix.needsUpdate = this.bodies.instanceMatrix.needsUpdate = true
   }
 
   private updateSparkle(garden: Garden) {

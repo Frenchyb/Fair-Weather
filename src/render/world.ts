@@ -7,7 +7,9 @@ import * as THREE from 'three'
 import { T } from '../tuning'
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import lanternGlb from '../assets/lantern.glb'
+import { weld } from './batch'
 import { shaded } from './shade'
 import { surfaces } from './textures'
 
@@ -158,6 +160,9 @@ export class World {
     this.oak()
     this.pond()
     this.ornaments()
+    // Everything that never changes on its own welds into a few meshes; the lanterns load later.
+    const live = new Set<THREE.Material>([this.windows, this.lamps, this.water, ...this.oakLeaves])
+    weld(this.root, (m) => live.has(m.material as THREE.Material) || this.crowns.includes(m) || this.lilies.includes(m))
     this.lanterns()
   }
 
@@ -168,7 +173,8 @@ export class World {
       [p.x1 + 0.35, p.z1 + 0.35],
       [p.x0 - 0.35, p.z1 + 0.35],
     ]
-    new GLTFLoader().load(lanternGlb, (gltf) => {
+    // Models are meshopt-compressed by `npm run shrink`.
+    new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(lanternGlb, (gltf) => {
       const model = gltf.scene
       const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3())
       const k = 1.9 / size.y

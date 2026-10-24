@@ -90,10 +90,44 @@ const garden = new Garden({
   onStormRefused: () => say('The storm is still gathering. Green more of the lawn, or bring something into bloom.'),
   onStormEnd: () => say('The storm has passed, and the cloud is full again.'),
 })
-const view = new GardenScene(canvas, garden, new URLSearchParams(location.search).has('lite'))
+// Phones (and ?lite) draw at one pixel per CSS pixel, without ambient occlusion or bloom.
+const phone = matchMedia('(pointer: coarse)').matches
+const view = new GardenScene(canvas, garden, phone || new URLSearchParams(location.search).has('lite'))
 const input = new Input(canvas)
+// A phone can drop the GPU context when the page is backgrounded; start afresh rather than show a black frame.
+canvas.addEventListener('webglcontextlost', () => location.reload())
 input.onFirstPress = () => sound.start()
 input.onToggleJournal = toggleJournal
+
+// The performance overlay (P): frames a second, draw calls and triangles, against the budget.
+const perf = document.getElementById('perf')!
+let perfOn = new URLSearchParams(location.search).has('perf')
+let perfFrames = 0
+let perfClock = 0
+input.onTogglePerf = () => {
+  perfOn = !perfOn
+  perf.style.display = perfOn ? 'block' : 'none'
+}
+if (perfOn) perf.style.display = 'block'
+// Phones have no P key: tapping the count card toggles the overlay too.
+count.style.pointerEvents = 'auto'
+count.addEventListener('click', () => input.onTogglePerf?.())
+function showPerf(wall: number) {
+  perfFrames++
+  perfClock += wall
+  if (!perfOn || perfClock < 0.5) return
+  const fps = perfFrames / perfClock
+  perfFrames = perfClock = 0
+  const info = view.renderer.info.render
+  const b = T.perf
+  const row = (label: string, v: number, ok: boolean) => `<span class="${ok ? '' : 'over'}">${label} ${v.toLocaleString('en')}</span>`
+  perf.innerHTML = [
+    row('fps', Math.round(fps), fps >= b.fps),
+    row('draw calls', info.calls, info.calls <= b.drawCalls),
+    row('triangles', info.triangles, info.triangles <= b.triangles),
+    `<span>pixel ratio ${view.renderer.getPixelRatio()}</span>`,
+  ].join('<br>')
+}
 
 // The weather and season buttons, bottom right. Auto lets the climate decide.
 const NAMES: Record<string, string> = {
@@ -216,6 +250,7 @@ function frame(now: number) {
   const mix = cl.mix
   sound.setBreeze(garden.cloud.breezing, Math.max(storming, mix.rain * 0.35 + mix.overcast * 0.2 + mix.snow * 0.25))
   view.render(garden, dt, wall)
+  showPerf(wall)
   const h = garden.habitat
   // Crickets on a warm, dry night.
   const warm = cl.look.summer + cl.look.spring * 0.5

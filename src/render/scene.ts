@@ -88,7 +88,8 @@ export class GardenScene {
   private soil: THREE.MeshStandardMaterial[] = []
   private icons: THREE.Sprite[] = []
   private iconTex = needIcons()
-  private bees: THREE.Group[] = []
+  private bees: { mesh: THREE.InstancedMesh; local: THREE.Matrix4 }[] = []
+  private beeAt = new THREE.Object3D()
   private wind: WindView
   private effects: Effects
   private ground: GroundView
@@ -103,11 +104,13 @@ export class GardenScene {
   private dist = 20
   private gust = 0
 
-  /** `lite` starts at one pixel per CSS pixel with no ambient occlusion: for software-GL checks. */
+  /** `lite` starts at one pixel per CSS pixel with no ambient occlusion or bloom: for phones and software-GL checks. */
   constructor(private canvas: HTMLCanvasElement, garden: Garden, lite = false) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' })
     this.pixelRatio = lite ? 1 : Math.min(window.devicePixelRatio, 2)
     this.renderer.setPixelRatio(this.pixelRatio)
+    // Count every pass of a frame, not just the last, for the performance overlay.
+    this.renderer.info.autoReset = false
     this.renderer.toneMapping = THREE.AgXToneMapping
     this.renderer.toneMappingExposure = T.look.exposure
     this.renderer.shadowMap.enabled = true
@@ -160,24 +163,19 @@ export class GardenScene {
     this.wind = new WindView(s, garden.plants.length)
     this.effects = new Effects(s, garden)
 
+    // Every bee is one instance of each of three parts: three draw calls for the whole swarm.
     const beeBody = new THREE.SphereGeometry(0.045, 8, 6)
-    const beeMat = new THREE.MeshStandardMaterial({ color: 0xe6b422 })
-    const wingMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 })
-    const stripeMat = new THREE.MeshStandardMaterial({ color: 0x2a2018 })
-    for (let i = 0; i < garden.plants.length * T.render.beesPerPlant; i++) {
-      const bee = new THREE.Group()
-      const body = new THREE.Mesh(beeBody, beeMat)
-      body.scale.set(1, 1, 1.3)
-      const stripe = new THREE.Mesh(beeBody, stripeMat)
-      stripe.scale.set(1.05, 1.05, 0.35)
-      const wing = new THREE.Mesh(beeBody, wingMat)
-      wing.scale.set(1.6, 0.15, 0.6)
-      wing.position.y = 0.04
-      bee.add(body, stripe, wing)
-      bee.visible = false
-      s.add(bee)
-      this.bees.push(bee)
+    const nBees = garden.plants.length * T.render.beesPerPlant
+    const part = (mat: THREE.Material, sx: number, sy: number, sz: number, y = 0) => {
+      const m = new THREE.InstancedMesh(beeBody, mat, nBees)
+      m.count = 0
+      m.frustumCulled = false
+      this.bees.push({ mesh: m, local: new THREE.Matrix4().compose(new THREE.Vector3(0, y, 0), new THREE.Quaternion(), new THREE.Vector3(sx, sy, sz)) })
+      s.add(m)
     }
+    part(new THREE.MeshStandardMaterial({ color: 0xe6b422 }), 1, 1, 1.3)
+    part(new THREE.MeshStandardMaterial({ color: 0x2a2018 }), 1.05, 1.05, 0.35)
+    part(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 }), 1.6, 0.15, 0.6, 0.04)
 
     // Ambient occlusion and a touch of bloom, then tone mapping.
     this.composer = new EffectComposer(this.renderer)
@@ -200,7 +198,7 @@ export class GardenScene {
     }
     const b = T.look.bloom
     this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), b.strength, b.radius, b.threshold)
-    this.composer.addPass(this.bloom)
+    if (!lite) this.composer.addPass(this.bloom)
     this.composer.addPass(new OutputPass())
     this.composer.addPass(this.gradePass)
   }
@@ -347,6 +345,7 @@ export class GardenScene {
 
   /** `wall` is the real time the last frame took, unclamped, for `adapt`. */
   render(garden: Garden, dt: number, wall = dt) {
+    this.renderer.info.reset()
     const t = garden.time
     const c = garden.cloud
     const day = garden.daylight
@@ -536,14 +535,14 @@ export class GardenScene {
     const t = garden.time
     const per = T.render.beesPerPlant
     const awake = garden.habitat.bees.mode === 'busy'
+    const at = this.beeAt
+    const m = new THREE.Matrix4()
+    let n = 0
     garden.plants.forEach((p, i) => {
-      const bloomed = p.growth >= 1 && awake
+      if (p.growth < 1 || !awake) return
       const top = this.plants[i].top
       const spread = (T.kinds[p.kind].reach ?? 0.5) * 0.9
       for (let j = 0; j < per; j++) {
-        const bee = this.bees[i * per + j]
-        bee.visible = bloomed
-        if (!bloomed) continue
         const path = (s: number) =>
           new THREE.Vector3(
             p.x + Math.sin(s) * spread + Math.sin(s * 2.3) * 0.12,
@@ -551,10 +550,21 @@ export class GardenScene {
             p.z + Math.cos(s * 0.8) * spread,
           )
         const s = t * (1.3 + j * 0.4) + i * 1.7 + j * 3
-        bee.position.copy(path(s))
-        bee.lookAt(path(s + 0.05))
-        bee.children[2].scale.y = 0.15 + Math.abs(Math.sin(t * 60 + j)) * 0.1
+        at.position.copy(path(s))
+        at.lookAt(path(s + 0.05))
+        at.updateMatrix()
+        for (const [k, b] of this.bees.entries()) {
+          m.copy(at.matrix).multiply(b.local)
+          // The wings beat.
+          if (k === 2) m.multiply(new THREE.Matrix4().makeScale(1, 1 + Math.abs(Math.sin(t * 60 + j)) * 0.7, 1))
+          b.mesh.setMatrixAt(n, m)
+        }
+        n++
       }
     })
+    for (const b of this.bees) {
+      b.mesh.count = n
+      b.mesh.instanceMatrix.needsUpdate = true
+    }
   }
 }

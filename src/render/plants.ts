@@ -38,6 +38,32 @@ let seedHead: THREE.Texture | null = null
 
 const TIRED = new THREE.Color(0xa59a52)
 
+/**
+ * One flower or fruit drawn as an instance of a shared mesh: it keeps the
+ * interface a separate mesh had (visible, scale, userData), and `flush`
+ * writes it into the instanced mesh.
+ */
+class Slot {
+  visible = true
+  readonly scale = new THREE.Vector3(1, 1, 1)
+  readonly userData: Record<string, unknown>
+  private zero = new THREE.Vector3()
+  constructor(
+    private inst: THREE.InstancedMesh,
+    private index: number,
+    private position: THREE.Vector3,
+    private quaternion: THREE.Quaternion,
+    userData: Record<string, unknown>,
+  ) {
+    this.userData = userData
+  }
+  flush(m: THREE.Matrix4) {
+    m.compose(this.position, this.quaternion, this.visible ? this.scale : this.zero)
+    this.inst.setMatrixAt(this.index, m)
+    this.inst.instanceMatrix.needsUpdate = true
+  }
+}
+
 /** Full-grown height of each plant, for placing its thought bubble. */
 const HEIGHT: Record<KindName, number> = {
   tomato: 1.15,
@@ -74,8 +100,10 @@ export class PlantView {
   private body = new THREE.Group()
   private leaf: THREE.MeshStandardMaterial
   private healthy: THREE.Color
-  private flowers: THREE.Object3D[] = []
-  private fruit: THREE.Object3D[] = []
+  private flowers: (THREE.Object3D | Slot)[] = []
+  private fruit: (THREE.Object3D | Slot)[] = []
+  private slots: Slot[] = []
+  private m = new THREE.Matrix4()
   private fruitMat?: THREE.MeshStandardMaterial
   private seed: THREE.Mesh
   private glow?: THREE.MeshStandardMaterial
@@ -110,6 +138,8 @@ export class PlantView {
     this.leaf = sheet(leafColor)
     builders[kind].call(this)
     if (!this.green.empty) this.body.add(mesh(this.green.build(), this.leaf))
+    this.flowers = this.pack(this.flowers)
+    this.fruit = this.pack(this.fruit)
 
     this.seed = mesh(seedLump, lambert(0x5a4330, 0.95))
     this.seed.scale.set(0.12, 0.05, 0.12)
@@ -157,6 +187,33 @@ export class PlantView {
         f.scale.setScalar(set * (f.userData.size as number))
       }
     }
+    for (const s of this.slots) s.flush(this.m)
+  }
+
+  /** Turn repeated flowers or fruit into instances of one mesh: a draw call per kind, not per flower. */
+  private pack(list: (THREE.Object3D | Slot)[]) {
+    const groups = new Map<string, THREE.Mesh[]>()
+    for (const o of list) {
+      const m = o as THREE.Mesh
+      if (!m.isMesh || m.parent !== this.body) continue
+      const key = m.geometry.uuid + (m.material as THREE.Material).uuid
+      groups.set(key, [...(groups.get(key) ?? []), m])
+    }
+    const swap = new Map<THREE.Object3D, Slot>()
+    for (const meshes of groups.values()) {
+      if (meshes.length < 2) continue
+      const inst = new THREE.InstancedMesh(meshes[0].geometry, meshes[0].material, meshes.length)
+      inst.castShadow = true
+      inst.receiveShadow = true
+      meshes.forEach((m, i) => {
+        const slot = new Slot(inst, i, m.position.clone(), m.quaternion.clone(), m.userData)
+        swap.set(m, slot)
+        this.slots.push(slot)
+        m.removeFromParent()
+      })
+      this.body.add(inst)
+    }
+    return list.map((o) => swap.get(o as THREE.Object3D) ?? o)
   }
 
   /** A tapering stem from `from` to `to`, `r` thick at the base. */

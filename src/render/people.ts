@@ -7,6 +7,7 @@
  * carry. Reads the garden only.
  */
 import * as THREE from 'three'
+import { weld } from './batch'
 import type { Garden } from '../sim/garden'
 import { washSpot, type Carry, type Emote, type Person } from '../sim/people'
 import { T } from '../tuning'
@@ -272,6 +273,10 @@ export class PeopleView {
   ) {
     this.rose = figure(true, scene)
     this.walter = figure(false, scene)
+    // Weld each body part's pieces; the things they carry stay separate, to be shown and tinted.
+    for (const f of [this.rose, this.walter]) {
+      for (const j of [f.root, f.hips, f.head, f.legL, f.legR, f.armL, f.armR]) weld(j, () => false, true)
+    }
     for (const e of ['happy', 'tea', 'surprised', 'cold', 'note'] as Emote[]) this.emotes.set(e, emoteTexture(e))
 
     // The washing line: two posts, a line, and what hangs on it.

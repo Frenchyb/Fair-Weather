@@ -14,6 +14,7 @@
  * Reads the garden only.
  */
 import * as THREE from 'three'
+import { weldParts } from './batch'
 import type { Garden } from '../sim/garden'
 import { T } from '../tuning'
 import * as C from './critters'
@@ -53,6 +54,8 @@ const H = T.habitat
 
 function critter(made: Made, size: number, scene: THREE.Scene): Critter {
   made.root.visible = false
+  // Each moving part's pieces become one mesh: a few draw calls per animal, not dozens.
+  weldParts(made.root, Object.values(made.parts))
   made.root.scale.setScalar(size)
   scene.add(made.root)
   return {

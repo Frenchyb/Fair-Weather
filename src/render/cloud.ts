@@ -6,6 +6,7 @@
  * a storm it swells and darkens over half the yard. Reads the garden only.
  */
 import * as THREE from 'three'
+import { weld } from './batch'
 import { onBed, type Garden } from '../sim/garden'
 import { T } from '../tuning'
 import { rng } from './world'
@@ -32,7 +33,6 @@ export function lumpy(detail: number, seed: number) {
 
 export class CloudView {
   private group = new THREE.Group()
-  private puffs: THREE.Mesh[] = []
   private mat: THREE.MeshStandardMaterial
   private size = 1
   private y: number = T.cloud.height
@@ -84,12 +84,11 @@ export class CloudView {
       p.position.set(Math.cos(a) * d, s * 0.55 + r() * 0.12 + (1 - d) * 0.2, Math.sin(a) * d * 0.8)
       p.scale.set(s * 1.15, s * 0.9, s)
       p.rotation.set(r() * 3, r() * 3, r() * 3)
-      p.userData.base = p.position.clone()
-      p.userData.phase = r() * 6
       p.castShadow = false
       this.group.add(p)
-      this.puffs.push(p)
     }
+    // One mesh for the whole heap; the heap breathes as one.
+    weld(this.group)
     scene.add(this.group)
 
     // Rain: streaks recycled from a fixed pool.
@@ -159,11 +158,6 @@ export class CloudView {
     const puffy = c.fogging ? 0.35 : (0.7 + 0.3 * fill) * (1 + this.storm * 0.4)
     this.group.position.set(c.x, this.y + Math.sin(t * 0.5) * 0.08, c.z)
     this.group.scale.set(this.size, this.size * puffy * 0.75, this.size)
-    this.puffs.forEach((p) => {
-      const b = p.userData.base as THREE.Vector3
-      const ph = p.userData.phase as number
-      p.position.set(b.x + Math.sin(t * 0.3 + ph) * 0.02, b.y + Math.sin(t * 0.45 + ph) * 0.025, b.z)
-    })
     cloudUniforms.uBase.value = this.y
     cloudUniforms.uDepth.value = this.size * puffy * 0.75
     const grey = Math.max(c.raining ? 0.35 : 0, this.storm)

@@ -10,6 +10,9 @@
  */
 import { T } from './tuning'
 
+/** A random factor within `spread` either side of 1. */
+const vary = (spread: number) => 1 + (Math.random() * 2 - 1) * spread
+
 export class Sound {
   private ctx?: AudioContext
   private rain?: GainNode
@@ -23,14 +26,23 @@ export class Sound {
 
   start() {
     if (this.ctx) return
+    // Without this an iPhone's silent switch mutes Web Audio entirely (Safari 17+).
+    const session = (navigator as { audioSession?: { type: string } }).audioSession
+    if (session) session.type = 'playback'
     const ctx = new AudioContext()
     this.ctx = ctx
     this.startCrickets(ctx)
 
-    // Two seconds of noise, looped, softened into rain: no resonant filters.
-    const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate)
-    const data = buf.getChannelData(0)
-    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1
+    // Each bed of sound loops its own noise, each a different length, so their
+    // repeats never line up and the rain never audibly cycles.
+    const L = T.audio.loops
+    const noise = (seconds: number) => {
+      const b = ctx.createBuffer(1, Math.floor(ctx.sampleRate * seconds), ctx.sampleRate)
+      const d = b.getChannelData(0)
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1
+      return b
+    }
+    const buf = noise(L.rain)
     const src = ctx.createBufferSource()
     this.noise = buf
     src.buffer = buf
@@ -47,10 +59,22 @@ export class Sound {
     this.rain.gain.value = 0
     src.connect(low).connect(high).connect(this.rain).connect(ctx.destination)
     src.start()
+    // A second, softer layer of rain on its own loop, a little brighter.
+    const patter = ctx.createBufferSource()
+    patter.buffer = noise(L.patter)
+    patter.loop = true
+    const patterHigh = ctx.createBiquadFilter()
+    patterHigh.type = 'highpass'
+    patterHigh.frequency.value = 900
+    patterHigh.Q.value = 0.5
+    const patterGain = ctx.createGain()
+    patterGain.gain.value = 0.45
+    patter.connect(patterHigh).connect(patterGain).connect(this.rain)
+    patter.start()
 
     // The same noise, much darker, is the breeze.
     const windSrc = ctx.createBufferSource()
-    windSrc.buffer = buf
+    windSrc.buffer = noise(L.wind)
     windSrc.loop = true
     windSrc.playbackRate.value = 0.7
     const windLow = ctx.createBiquadFilter()
@@ -64,7 +88,7 @@ export class Sound {
 
     // Rain on the shed and house roofs: the same noise, duller and slower, drumming.
     const roofSrc = ctx.createBufferSource()
-    roofSrc.buffer = buf
+    roofSrc.buffer = noise(L.roof)
     roofSrc.loop = true
     roofSrc.playbackRate.value = 0.55
     const roofLow = ctx.createBiquadFilter()
@@ -301,11 +325,11 @@ export class Sound {
     src.buffer = this.noise!
     const f = ctx.createBiquadFilter()
     f.type = type
-    f.frequency.value = freq
+    f.frequency.value = freq * vary(T.audio.vary.pitch)
     f.Q.value = q
     const g = ctx.createGain()
     g.gain.setValueAtTime(0, at)
-    g.gain.linearRampToValueAtTime(gain, at + attack)
+    g.gain.linearRampToValueAtTime(gain * vary(T.audio.vary.gain), at + attack)
     g.gain.exponentialRampToValueAtTime(0.0001, at + len)
     const pan = ctx.createStereoPanner()
     pan.pan.value = Math.random() * 1.2 - 0.6
@@ -319,8 +343,10 @@ export class Sound {
     const ctx = this.ctx!
     const o = ctx.createOscillator()
     o.type = type
-    o.frequency.setValueAtTime(from, at)
-    o.frequency.exponentialRampToValueAtTime(to, at + len)
+    // No two cheeps, plips or quacks quite the same.
+    const k = vary(T.audio.vary.pitch)
+    o.frequency.setValueAtTime(from * k, at)
+    o.frequency.exponentialRampToValueAtTime(to * k, at + len)
     const g = ctx.createGain()
     g.gain.setValueAtTime(0, at)
     g.gain.linearRampToValueAtTime(gain, at + 0.008)
