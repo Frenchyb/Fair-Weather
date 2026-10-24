@@ -36,7 +36,7 @@ function signature(m: Std, mesh: THREE.Mesh) {
 }
 
 /** The geometry ready to weld: in `root`'s space, coloured, with UVs already placed on its texture. */
-function baked(mesh: THREE.Mesh, toRoot: THREE.Matrix4) {
+function baked(mesh: THREE.Mesh, toRoot: THREE.Matrix4, tint = true) {
   const m = mesh.material as Std
   const g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone()
   for (const name of Object.keys(g.attributes)) {
@@ -48,10 +48,11 @@ function baked(mesh: THREE.Mesh, toRoot: THREE.Matrix4) {
   // Colour: the material's tint, times the vertex colours if it used them.
   const c = new Float32Array(n * 3)
   const own = m.vertexColors ? g.attributes.color : null
+  const t = tint ? m.color : new THREE.Color(1, 1, 1)
   for (let i = 0; i < n; i++) {
-    c[i * 3] = m.color.r * (own ? own.getX(i) : 1)
-    c[i * 3 + 1] = m.color.g * (own ? own.getY(i) : 1)
-    c[i * 3 + 2] = m.color.b * (own ? own.getZ(i) : 1)
+    c[i * 3] = t.r * (own ? own.getX(i) : 1)
+    c[i * 3 + 1] = t.g * (own ? own.getY(i) : 1)
+    c[i * 3 + 2] = t.b * (own ? own.getZ(i) : 1)
   }
   g.setAttribute('color', new THREE.BufferAttribute(c, 3))
   // UVs: bake the texture's repeat and offset in, so every piece can share one texture.
@@ -109,10 +110,12 @@ export function weld(root: THREE.Object3D, keep: (m: THREE.Mesh) => boolean = ()
     }
     const first = list[0]
     const src = first.material as Std
-    const geo = mergeGeometries(list.map((m) => baked(m, toRoot)), false)
     // All one material already: keep it, so whoever changes it at runtime still reaches the weld.
     const same = list.every((m) => m.material === src)
-    const mat = same && !src.map && !src.normalMap && !src.roughnessMap ? src : src.clone()
+    const keepSrc = same && !src.map && !src.normalMap && !src.roughnessMap
+    // A kept material still applies its own tint, so the vertex colours must not carry it as well.
+    const geo = mergeGeometries(list.map((m) => baked(m, toRoot, !keepSrc)), false)
+    const mat = keepSrc ? src : src.clone()
     // `clone` does not carry the shader patches; the program key keeps them apart.
     if (mat !== src) {
       mat.onBeforeCompile = src.onBeforeCompile
