@@ -490,7 +490,7 @@ export class World {
     const oakBark = surface('bark', 0xb0a090, 0.95)
     add(g, new THREE.Mesh(trunk(lumps, o.crownHeight * 0.55, 0.42, 23), oakBark))
     const oakLeaf = { length: 1, width: 0.7, widest: 0.5, fold: 0.25, curl: 0.2, ruffle: 0.08 }
-    const mat = leaves(new THREE.Color().setHSL(0.27, 0.42, 0.3))
+    const mat = leaves(new THREE.Color().setHSL(0.29, 0.4, 0.24))
     // Front faces only: the camera can sit up inside the oak's crown, and from in there it should vanish.
     this.oakLeaves.push(mat)
     const c = new THREE.Mesh(canopy(lumps, oakLeaf, 0.28, T.render.canopy.sprays * 1.4, T.render.canopy.core, 23, [3, 1]), mat)

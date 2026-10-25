@@ -482,7 +482,7 @@ export const T = {
    * added to the darkest (display-space RGB, 0..1).
    */
   look: {
-    exposure: 1.45,
+    exposure: 1.35,
     sun: 4.2,
     /** Sky fill from the hemisphere light and the sky's own reflections, at noon. */
     fill: 0.38,
