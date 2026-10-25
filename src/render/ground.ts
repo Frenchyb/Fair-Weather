@@ -8,7 +8,7 @@
 import * as THREE from 'three'
 import type { Garden } from '../sim/garden'
 import { T } from '../tuning'
-import { fieldUniforms, seasonUniforms, shaded } from './shade'
+import { fieldUniforms, meadowUniforms, seasonUniforms, shaded } from './shade'
 import { surfaces } from './textures'
 import { rng } from './world'
 
@@ -26,43 +26,68 @@ function radialTexture(stops: [number, string][]) {
   return t
 }
 
-/** Three blades from one root, each two segments tall so it can bend. */
-function clump() {
+/**
+ * A meadow tuft: three curved blades of three segments, unit tall. `aT` runs
+ * root to tip so the shader can bend the tip most.
+ */
+function tuft() {
   const pos: number[] = []
-  const nor: number[] = []
+  const t: number[] = []
   const idx: number[] = []
-  const r = rng(99)
+  const H = T.render.meadow.height
   for (let b = 0; b < 3; b++) {
-    const a = (b / 3) * Math.PI + r() * 0.6
-    const ca = Math.cos(a)
-    const sa = Math.sin(a)
-    const ox = (r() - 0.5) * 0.06
-    const oz = (r() - 0.5) * 0.06
-    const h = 0.24 + r() * 0.1
-    const w = 0.022
-    const lean = (r() - 0.5) * 0.08
+    const a = (b / 3) * Math.PI * 2 + 0.4
+    const ox = Math.cos(a * 1.7) * 0.04
+    const oz = Math.sin(a * 1.3) * 0.04
+    const lean = 0.05 + 0.04 * b
+    const w = 0.02
     const base = pos.length / 3
-    const ring: [number, number][] = [
-      [-w, 0],
-      [w, 0],
-      [-w * 0.6, h * 0.55],
-      [w * 0.6, h * 0.55],
-      [0, h],
-    ]
-    for (const [s, y] of ring) {
-      const t = y / h
-      pos.push(ox + ca * s + lean * t * sa, y, oz + sa * s - lean * t * ca)
-      // Normals point mostly up, so a lawn of blades lights like a lawn, not like slivers.
-      nor.push(sa * 0.3, 1, -ca * 0.3)
+    for (let s = 0; s <= 3; s++) {
+      const v = s / 3
+      const ww = w * (1 - v * 0.85)
+      const cx = ox + Math.cos(a) * lean * v * v
+      const cz = oz + Math.sin(a) * lean * v * v
+      const y = v * H * (0.8 + b * 0.15)
+      pos.push(cx - Math.sin(a) * ww, y, cz + Math.cos(a) * ww, cx + Math.sin(a) * ww, y, cz - Math.cos(a) * ww)
+      t.push(v, v)
     }
-    idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2, base + 2, base + 3, base + 4)
+    for (let s = 0; s < 3; s++) {
+      const i = base + s * 2
+      idx.push(i, i + 1, i + 3, i, i + 3, i + 2)
+    }
   }
-  const g = new THREE.BufferGeometry()
+  const g = new THREE.InstancedBufferGeometry()
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3))
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(pos.map((_, i) => (i % 3 === 1 ? 1 : 0)), 3))
+  g.setAttribute('aT', new THREE.Float32BufferAttribute(t, 1))
   g.setIndex(idx)
-  g.normalizeNormals()
   return g
+}
+
+/** Where grass may grow: everywhere on the lawn but the bed, the pond and the paving. One byte per 10 cm. */
+function grassMask() {
+  const y = T.yard
+  const x0 = y.x0 - 1
+  const z0 = y.z0 - 0.5
+  const w = y.x1 - y.x0 + 2
+  const d = y.z1 - y.z0 + 4.5
+  const per = 10
+  const cols = Math.ceil(w * per)
+  const rows = Math.ceil(d * per)
+  const data = new Uint8Array(cols * rows)
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      const x = x0 + (i + 0.5) / per
+      const z = z0 + (j + 0.5) / per
+      const inBed = Math.abs(x) < T.bed.width / 2 + 0.15 && Math.abs(z) < T.bed.depth / 2 + 0.15
+      const inPond = Math.hypot(x - T.pond.x, z - T.pond.z) < T.pond.radius + 0.25
+      const hard = T.hardGround.some((h) => x > h.x0 - 0.1 && x < h.x1 + 0.1 && z > h.z0 - 0.1 && z < h.z1 + 0.1)
+      data[j * cols + i] = inBed || inPond || hard ? 0 : 255
+    }
+  }
+  const tex = new THREE.DataTexture(data, cols, rows, THREE.RedFormat, THREE.UnsignedByteType)
+  tex.needsUpdate = true
+  return { tex, min: new THREE.Vector2(x0, z0), size: new THREE.Vector2(cols / per, rows / per) }
 }
 
 export class GroundView {
@@ -109,35 +134,19 @@ export class GroundView {
     lawn.receiveShadow = true
     scene.add(lawn)
 
-    // Grass: a few tens of thousands of clumps, kept off beds, paving and water.
-    const r = rng(41)
-    const count = lite ? T.render.grassClumps / 4 : T.render.grassClumps
-    const grass = new THREE.InstancedMesh(
-      clump(),
-      shaded(new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide, roughness: 0.8 }), 'grass'),
-      count,
-    )
-    const c = new THREE.Color()
-    const s = new THREE.Vector3()
-    const q = new THREE.Quaternion()
-    const up = new THREE.Vector3(0, 1, 0)
-    let placed = 0
-    let tries = 0
-    while (placed < count && tries++ < count * 4) {
-      const x = y.x0 - 1 + r() * (y.x1 - y.x0 + 2)
-      const z = y.z0 - 0.5 + r() * (y.z1 - y.z0 + 4)
-      const inBed = Math.abs(x) < T.bed.width / 2 + 0.15 && Math.abs(z) < T.bed.depth / 2 + 0.15
-      const inPond = Math.hypot(x - T.pond.x, z - T.pond.z) < T.pond.radius + 0.25
-      const hard = T.hardGround.some((h) => x > h.x0 - 0.1 && x < h.x1 + 0.1 && z > h.z0 - 0.1 && z < h.z1 + 0.1)
-      if (inBed || inPond || hard) continue
-      const k = 0.8 + r() * 0.6
-      q.setFromAxisAngle(up, r() * Math.PI * 2)
-      this.m.compose(new THREE.Vector3(x, 0, z), q, s.set(k, k * (0.75 + r() * 0.5), k))
-      grass.setMatrixAt(placed, this.m)
-      grass.setColorAt(placed, c.setRGB(0.85 + r() * 0.3, 0.85 + r() * 0.3, 0.8 + r() * 0.2))
-      placed++
-    }
-    grass.count = placed
+    // Grass: meadow tufts laid out round the camera's focus by the shader.
+    const M = T.render.meadow
+    const side = lite ? M.tuftsLite : M.tufts
+    const mask = grassMask()
+    meadowUniforms.uG.value = side
+    meadowUniforms.uCell.value = lite ? M.cellLite : M.cell
+    meadowUniforms.uReach.value = side * meadowUniforms.uCell.value * 0.47
+    meadowUniforms.uMask.value = mask.tex
+    meadowUniforms.uMaskMin.value.copy(mask.min)
+    meadowUniforms.uMaskSize.value.copy(mask.size)
+    const tufts = tuft()
+    tufts.instanceCount = side * side
+    const grass = new THREE.Mesh(tufts, shaded(new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide, roughness: 0.8 }), 'grass'))
     grass.receiveShadow = true
     grass.frustumCulled = false
     scene.add(grass)
@@ -162,6 +171,8 @@ export class GroundView {
     }
 
     // Fairy rings: mushrooms come up round each scorch as it heals.
+    const r = rng(41)
+    const c = new THREE.Color()
     const per = 11
     for (let i = 0; i < per; i++) {
       const a = (i / per) * Math.PI * 2 + (r() - 0.5) * 0.3

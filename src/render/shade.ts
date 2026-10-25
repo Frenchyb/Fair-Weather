@@ -31,8 +31,22 @@ export const fieldUniforms = {
   /** How hard the wind is blowing everywhere, 0 calm to 1 storm. */
   uGust: { value: 0 },
   uWind: { value: new THREE.Vector2(1, 0) },
+  /** The always-moving air: its strength (0 calm to 1 gale) and the way it blows. */
+  uAir: { value: T.render.air.clear },
+  uAirDir: { value: new THREE.Vector2(1, 0) },
   /** Photographed grass, used for its light and dark, not its colour. */
   uGrassTex: { value: surfaces.grass.map as THREE.Texture },
+}
+
+/** Where the meadow grass is laid out: round `uCenter`, and only where `uMask` allows. */
+export const meadowUniforms = {
+  uCenter: { value: new THREE.Vector2() },
+  uCell: { value: T.render.meadow.cell },
+  uG: { value: T.render.meadow.tufts },
+  uReach: { value: 20 },
+  uMask: { value: null as THREE.Texture | null },
+  uMaskMin: { value: new THREE.Vector2() },
+  uMaskSize: { value: new THREE.Vector2(1, 1) },
 }
 
 /**
@@ -66,8 +80,8 @@ export type GroundFx = 'plain' | 'wet' | 'lawn' | 'grass' | 'foliage' | 'evergre
 const FIELD_COMMON = `
 uniform sampler2D uField;
 uniform vec2 uFieldMin, uFieldSize;
-uniform float uTime, uGust;
-uniform vec2 uWind;
+uniform float uTime, uGust, uAir;
+uniform vec2 uWind, uAirDir;
 uniform sampler2D uGrassTex;
 uniform sampler2D uCover;
 uniform float uSnowAll;
@@ -93,6 +107,11 @@ vec2 fwCover(vec2 xz) {
   return texture2D(uCover, uv).rg;
 }
 float fwLum(vec3 c) { return dot(c, vec3(0.3, 0.59, 0.11)); }
+/** Gusts: a noise field travelling downwind, so you can watch one cross the garden. 0..1. */
+float fwGustAt(vec2 xz) {
+  vec2 p = (xz - uAirDir * uTime * ${T.render.air.speed.toFixed(2)} * (0.6 + uAir)) / ${T.render.air.size.toFixed(2)};
+  return fwNoise(p) * 0.7 + fwNoise(p * 2.7 + 3.1) * 0.3;
+}
 `
 
 /** Fallen leaves, speckled over whatever is underneath. */
@@ -142,43 +161,83 @@ const SNOW = (flat: boolean) => `
   }
 `
 
+const MEADOW = `
+attribute float aT;
+uniform vec2 uCenter, uMaskMin, uMaskSize;
+uniform float uCell, uReach;
+uniform int uG;
+uniform sampler2D uMask;
+varying float vGreen, vTip, vLaid, vVar, vGust;
+`
+
 const PUDDLE_LINE = (T.ground.puddleAt / T.ground.maxWet).toFixed(3)
 
 export function shaded<M extends THREE.Material>(material: M, fx: GroundFx = 'plain'): M {
   material.customProgramCacheKey = () => `fw-${fx}`
   material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, shadeUniforms, fieldUniforms, seasonUniforms)
+    Object.assign(shader.uniforms, shadeUniforms, fieldUniforms, seasonUniforms, fx === 'grass' ? meadowUniforms : {})
     let vs = shader.vertexShader
       .replace(
         '#include <common>',
         `#include <common>
         varying vec2 vShadeXZ;
         varying float vShadeUp, vShadeH;
-        ${fx === 'grass' ? FIELD_COMMON + 'varying float vGreen, vTip, vLaid;' : ''}`,
+        ${fx === 'grass' ? FIELD_COMMON + MEADOW : fx === 'foliage' || fx === 'evergreen' ? FIELD_COMMON : ''}`,
       )
     if (fx === 'grass') {
       // Each blade samples the lawn at its root: greener grass is taller, and
       // laid-over grass leans along its bend, plus a breeze that never stops.
+      // Tufts are laid out on a grid that moves with the camera's focus, snapped to
+      // whole cells so no blade swims as the view pans (the island proof's grass).
+      vs = vs
+        .replace('#include <beginnormal_vertex>', 'vec3 objectNormal = vec3(0.0, 1.0, 0.0);')
+        .replace(
+          '#include <begin_vertex>',
+          `int id = gl_InstanceID;
+        vec2 ix = vec2(float(id % uG), float(id / uG)) - float(uG) * 0.5;
+        vec2 cell = (floor(uCenter / uCell) + ix) * uCell;
+        float r1 = fwHash(cell * 1.37), r2 = fwHash(cell * 2.71 + 5.0), r3 = fwHash(cell * 0.73 + 9.0);
+        vec2 rootXZ = cell + vec2(r1, r2) * uCell;
+        vec2 muv = (rootXZ - uMaskMin) / uMaskSize;
+        float allowed = muv.x < 0.0 || muv.y < 0.0 || muv.x > 1.0 || muv.y > 1.0 ? 0.0 : step(0.5, texture2D(uMask, muv).r);
+        float fade = 1.0 - smoothstep(uReach * 0.6, uReach, length(rootXZ - uCenter));
+        float patchN = fwNoise(rootXZ * 0.35) * 0.6 + fwNoise(rootXZ * 1.7) * 0.4;
+        vec4 fld = fwField(rootXZ);
+        vGreen = fld.r;
+        vTip = aT;
+        vVar = 0.85 + 0.3 * r3;
+        float h = aT * aT;
+        float tall = allowed * fade * (0.6 + 0.5 * r2 + 0.5 * patchN) * mix(0.45, 1.0, fld.r);
+        // Snow buries the grass; winter flattens it a little.
+        tall *= (1.0 - 0.9 * smoothstep(0.05, 0.6, fwCover(rootXZ).r)) * (1.0 - 0.3 * uSeason.w);
+        float ca = cos(r1 * 6.283), sa = sin(r1 * 6.283);
+        vec3 transformed = vec3(ca * position.x - sa * position.z, position.y * tall, sa * position.x + ca * position.z);
+        vec2 bend = fld.ba;
+        vLaid = length(bend);
+        // The air: a gust field crossing the garden, plus a flutter that never stops.
+        float g = fwGustAt(rootXZ);
+        vGust = g;
+        float k = (0.12 + 1.1 * uAir) * (0.25 + g) + 0.08 * sin(uTime * (2.0 + 2.0 * uAir) + rootXZ.x * 0.6 + rootXZ.y * 0.4);
+        float sway = sin(uTime * 1.7 + rootXZ.x * 0.45 + rootXZ.y * 0.3) * (0.05 + 0.25 * uGust);
+        vec2 lean = bend * 0.22 + uAirDir * k * 0.35 + uWind * (sway + 0.12 * uGust);
+        transformed.xz += lean * h * tall;
+        transformed.y -= (vLaid * 0.12 + dot(lean, lean) * 0.35) * h * tall;
+        transformed.xz += rootXZ;`,
+        )
+    }
+    if (fx === 'foliage' || fx === 'evergreen') {
+      // Crowns sway as the same gusts cross them that cross the grass, more the higher they are.
       vs = vs.replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
-        vec2 rootXZ = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xz;
-        vec4 fld = fwField(rootXZ);
-        vGreen = fld.r;
-        vTip = clamp(position.y / 0.32, 0.0, 1.0);
-        float h = vTip * vTip;
-        transformed.y *= mix(0.45, 1.0, fld.r);
-        // Snow buries the grass; winter flattens it a little.
-        transformed.y *= (1.0 - 0.9 * smoothstep(0.05, 0.6, fwCover(rootXZ).r)) * (1.0 - 0.3 * uSeason.w);
-        vec2 bend = fld.ba;
-        vLaid = length(bend);
-        float sway = sin(uTime * 1.7 + rootXZ.x * 0.45 + rootXZ.y * 0.3) * (0.05 + 0.25 * uGust);
-        vec2 lean = bend * 0.22 + uWind * (sway + 0.12 * uGust);
-        // Lean is in world space; undo the blade's own rotation.
-        mat3 r = mat3(instanceMatrix);
-        vec3 local = transpose(r) * vec3(lean.x, 0.0, lean.y) / max(0.001, length(r[0]));
-        transformed += local * h;
-        transformed.y -= vLaid * 0.12 * h;`,
+        {
+          vec4 sw = modelMatrix * vec4(transformed, 1.0);
+          float sg = fwGustAt(sw.xz);
+          float up = max(0.0, sw.y - 0.4);
+          vec2 push = uAirDir * (0.01 + 0.05 * uAir) * (0.3 + sg) * up * 0.3
+            + vec2(0.012, 0.009) * uAir * sin(uTime * 2.3 + sw.x * 1.7 + sw.y * 2.1) * up;
+          transformed += inverse(mat3(modelMatrix)) * vec3(push.x, 0.0, push.y);
+        }`,
       )
     }
     shader.vertexShader = vs.replace(
@@ -202,7 +261,7 @@ export function shaded<M extends THREE.Material>(material: M, fx: GroundFx = 'pl
         uniform vec2 uCloud;
         uniform float uRadius, uSoft, uDark, uStorm;
         ${FIELD_COMMON}
-        ${fx === 'grass' ? 'varying float vGreen, vTip, vLaid;' : ''}`,
+        ${fx === 'grass' ? 'varying float vGreen, vTip, vLaid, vVar, vGust;' : ''}`,
     )
     if (fx === 'lawn') {
       fs = fs
@@ -263,7 +322,9 @@ export function shaded<M extends THREE.Material>(material: M, fx: GroundFx = 'pl
           lush = mix(lush, vec3(0.16, 0.16, 0.08), uSeason.w * 0.7);
           lush *= 1.0 + uSeason.x * 0.1;
           vec3 blade = mix(parched, lush, smoothstep(0.0, 1.0, vGreen));
-          blade *= mix(0.7, 1.15, vTip);
+          blade *= mix(0.62, 1.18, vTip) * vVar;
+          // A gust turns the blades and shows their paler sides.
+          blade *= 1.0 + 0.45 * vGust * vTip * (0.3 + uAir);
           // Laid-over grass catches the light along its length, like a mown stripe.
           blade = mix(blade, blade * 1.45 + vec3(0.03, 0.04, 0.0), clamp(vLaid * 1.2, 0.0, 0.6));
           diffuseColor.rgb *= blade;`,

@@ -8,10 +8,9 @@
 import * as THREE from 'three'
 import type { Plant } from '../sim/garden'
 import { T, type KindName } from '../tuning'
-import { Bundle, frond, leaf, lump, painted, seedHeadTexture, spike, starFlower, trumpet } from './leaves'
+import { Bundle, canopy, frond, leaf, lump, painted, seedHeadTexture, spike, starFlower, trunk, trumpet, type Lump } from './leaves'
 import { shaded } from './shade'
 import { surfaces } from './textures'
-import { foliage } from './world'
 
 const ball = new THREE.SphereGeometry(1, 16, 12)
 const stalk = painted(new THREE.CylinderGeometry(0.8, 1, 1, 7))
@@ -26,7 +25,6 @@ const SHAPES = {
   sunflowerLeaf: leaf({ length: 1, width: 0.85, widest: 0.3, fold: 0.25, curl: 0.45, heart: true }, 10, 4),
   sunflowerPetal: leaf({ length: 1, width: 0.32, widest: 0.45, fold: 0.15, curl: 0.12, shade: [0.85, 1.1] }, 5, 2),
   heartLeaf: leaf({ length: 1, width: 0.95, widest: 0.32, fold: 0.2, curl: 0.3, heart: true }, 8, 4),
-  appleLeaf: leaf({ length: 1, width: 0.5, widest: 0.45, fold: 0.3, curl: 0.2 }, 5, 2),
   fern: frond(0.85),
   star: starFlower(),
   blossom: starFlower(5, 0.45, 0.18),
@@ -408,37 +406,19 @@ export class PlantView {
   }
 
   private apple() {
-    const r = this.r
     const bark = lambert(0xb0a090, 0.95)
     bark.map = surfaces.bark.map
     bark.normalMap = surfaces.bark.normal
-    const trunk = mesh(new THREE.CylinderGeometry(0.11, 0.17, 1.8, 10), bark)
-    trunk.position.y = 0.9
-    this.body.add(trunk)
-    // Boughs up into the crown.
-    for (let i = 0; i < 4; i++) {
-      const a = i * 1.6 + 0.4
-      const limb = mesh(new THREE.CylinderGeometry(0.04, 0.07, 1, 7), bark)
-      limb.position.set(Math.cos(a) * 0.22, 1.95, Math.sin(a) * 0.22)
-      limb.rotation.set(Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6)
-      this.body.add(limb)
-    }
-    const crownPositions: [number, number, number, number][] = [
-      [0, 2.55, 0, 1.0],
-      [0.7, 2.25, 0.2, 0.72],
-      [-0.65, 2.3, -0.1, 0.78],
-      [0.1, 2.35, -0.65, 0.72],
-      [-0.15, 2.2, 0.7, 0.68],
+    const crown: Lump[] = [
+      [0, 2.55, 0, 0.95],
+      [0.7, 2.25, 0.2, 0.7],
+      [-0.65, 2.3, -0.1, 0.75],
+      [0.1, 2.35, -0.65, 0.7],
+      [-0.15, 2.2, 0.7, 0.66],
     ]
-    const crowns = [foliage(11), foliage(12.5), foliage(14)]
-    crownPositions.forEach(([x, y, z, sz], i) => this.green.add(crowns[i % 3], x, y, z, r() * 6, 0, 0, new THREE.Vector3(sz, sz * 0.85, sz)))
-    // A fringe of real leaves round the crown, so its edge reads as leaves.
-    for (let i = 0; i < 70; i++) {
-      const a = i * 2.4
-      const up = (r() - 0.3) * 1.2
-      const d = 1.05 + r() * 0.15
-      this.green.add(SHAPES.appleLeaf, Math.cos(a) * d * Math.cos(up), 2.35 + Math.sin(up) * d * 0.8, Math.sin(a) * d * Math.cos(up), Math.PI / 2 - a, up * 0.5 - 0.3, 0, 0.18)
-    }
+    // A short trunk forking into boughs, one up into each lump of the crown.
+    this.body.add(mesh(trunk(crown, 1.4, 0.15, 11), bark))
+    this.green.add(canopy(crown, { length: 1, width: 0.5, widest: 0.45, fold: 0.3, curl: 0.2 }, 0.16, T.render.canopy.sprays * 2.2, T.render.canopy.core, 11), 0, 0, 0)
     // Blossom first, then apples that redden as they ripen.
     const blossom = sheet(0xf7d7e0, 0.6)
     this.fruitMat = shaded(new THREE.MeshStandardMaterial({ color: 0x8fb83a, roughness: 0.35 }))

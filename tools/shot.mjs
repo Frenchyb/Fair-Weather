@@ -19,7 +19,8 @@ const MARKS = {
   bed: { focus: [0, -1], zoom: 0.45, time: 72 },
   patio: { focus: [-11, -3], zoom: 0.45, time: 72 },
   pond: { focus: [-6, 4.5], zoom: 0.5, time: 72 },
-  orchard: { focus: [11, -4], zoom: 0.6, time: 72 },
+  orchard: { focus: [11.5, -10], zoom: 0.6, time: 72 },
+  oak: { focus: [12, 4], zoom: 1, time: 72 },
   dusk: { focus: [-2, 1], zoom: 1, time: 160 },
   rain: { focus: [-2, 1], zoom: 1, time: 72, key: 'Digit3' },
 }

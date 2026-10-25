@@ -6,6 +6,7 @@
  */
 import * as THREE from 'three'
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { foliage } from './world'
 
 export type LeafShape = {
   length: number
@@ -231,4 +232,119 @@ export function seedHeadTexture() {
   const tex = new THREE.CanvasTexture(c)
   tex.colorSpace = THREE.SRGBColorSpace
   return tex
+}
+
+/** A lump of a tree's crown: its centre and radius, in the tree's own space. */
+export type Lump = [x: number, y: number, z: number, r: number]
+
+/**
+ * A tree's crown as sprays of real leaves over a few lumps, so the outline
+ * breaks up and sky shows through, with a darker lump inside each so the gaps
+ * read as depth rather than holes. Every normal leans out from the crown's
+ * centre, so the whole crown shades as one soft mass instead of a thousand
+ * glinting leaves. `size` is a spray's radius in metres; `density` sprays per
+ * square metre of surface; `core` the share of each lump filled solid;
+ * `detail` the rows and columns of each leaf (fewer for big trees seen from afar).
+ */
+export function canopy(lumps: Lump[], shape: LeafShape, size: number, density: number, core: number, seed = 1, detail: [number, number] = [4, 2]) {
+  let s = seed * 9301 + 49297
+  const r = () => ((s = (s * 9301 + 49297) % 233280) / 233280)
+  const b = new Bundle()
+  const centre = new THREE.Vector3()
+  for (const [x, y, z] of lumps) centre.add(new THREE.Vector3(x, y, z))
+  centre.divideScalar(lumps.length)
+  const top = Math.max(...lumps.map(([, y, , rr]) => y + rr))
+  const low = Math.min(...lumps.map(([, y, , rr]) => y - rr))
+
+  // A spray: leaves fanned round a point, lying in a cup facing +y.
+  const sprays = [0, 1, 2].map((k) => {
+    const sb = new Bundle()
+    const n = 5 + k
+    for (let i = 0; i < n; i++) sb.add(leaf(shape, detail[0], detail[1]), 0, 0, 0, (i / n) * Math.PI * 2 + k, 0.25 + ((i * 7) % 3) * 0.12, 0, 1)
+    return sb.build()
+  })
+
+  const dir = new THREE.Vector3()
+  const up = new THREE.Vector3(0, 1, 0)
+  const q = new THREE.Quaternion()
+  const e = new THREE.Euler()
+  const m = new THREE.Matrix4()
+  const at = new THREE.Vector3()
+  for (const [x, y, z, rr] of lumps) {
+    const inner = foliage(x * 3 + z)
+    shadeCanopy(inner, 0.55)
+    b.add(inner, x, y, z, 0, 0, 0, rr * core)
+    const n = Math.ceil(density * 4 * Math.PI * rr * rr)
+    for (let i = 0; i < n; i++) {
+      // Spread over the lump's surface (golden spiral), jittered.
+      const t = (i + 0.5) / n
+      const a = i * 2.39996 + r() * 0.5
+      const yy = 1 - 2 * t
+      const ring = Math.sqrt(1 - yy * yy)
+      dir.set(Math.cos(a) * ring, yy, Math.sin(a) * ring).normalize()
+      at.set(x, y, z).addScaledVector(dir, rr * (0.88 + r() * 0.2))
+      // Skip sprays buried inside a neighbouring lump: nobody sees them.
+      if (lumps.some(([ox, oy, oz, or]) => (ox !== x || oy !== y || oz !== z) && at.distanceTo(new THREE.Vector3(ox, oy, oz)) < or * 0.8)) continue
+      const g = sprays[i % 3].clone()
+      q.setFromUnitVectors(up, dir)
+      q.multiply(new THREE.Quaternion().setFromEuler(e.set(0, r() * Math.PI * 2, 0)))
+      const k = size * (0.8 + r() * 0.45)
+      m.compose(at, q, new THREE.Vector3(k, k, k))
+      g.applyMatrix4(m)
+      // Lighter on top where the sun gets in, darker underneath, and each spray a shade apart.
+      const lift = (at.y - low) / Math.max(0.01, top - low)
+      shadeCanopy(g, (0.62 + lift * 0.45) * (0.88 + r() * 0.24))
+      b.add(g, 0, 0, 0)
+    }
+  }
+  const out = b.build()
+  // Lean every normal out from the crown's centre.
+  const p = out.attributes.position
+  const nm = out.attributes.normal
+  const v = new THREE.Vector3()
+  const w = new THREE.Vector3()
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i).sub(centre).normalize()
+    w.fromBufferAttribute(nm, i)
+    w.multiplyScalar(0.3).addScaledVector(v, 0.7).normalize()
+    nm.setXYZ(i, w.x, w.y, w.z)
+  }
+  return out
+}
+
+function shadeCanopy(g: THREE.BufferGeometry, k: number) {
+  const c = g.attributes.color
+  for (let i = 0; i < c.count; i++) c.setXYZ(i, c.getX(i) * k, c.getY(i) * k, c.getZ(i) * k)
+}
+
+/** A tapering bough from `from` to `to`, `r0` thick at the base and `r1` at the end. */
+export function bough(from: THREE.Vector3, to: THREE.Vector3, r0: number, r1: number, sides = 7) {
+  const len = from.distanceTo(to)
+  const g = new THREE.CylinderGeometry(r1, r0, len, sides, 1, true)
+  g.translate(0, len / 2, 0)
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize()))
+  g.translate(from.x, from.y, from.z)
+  return g
+}
+
+/**
+ * A trunk that tapers and forks into boughs reaching up into each lump of the
+ * crown, so the tree has a shape and not a stick under a ball.
+ */
+export function trunk(lumps: Lump[], height: number, r0: number, seed = 1) {
+  let s = seed * 7919 + 1
+  const r = () => ((s = (s * 9301 + 49297) % 233280) / 233280)
+  const parts: THREE.BufferGeometry[] = []
+  const fork = new THREE.Vector3((r() - 0.5) * r0, height, (r() - 0.5) * r0)
+  // A flare at the foot, then the main stem up to the fork.
+  parts.push(bough(new THREE.Vector3(0, -0.05, 0), new THREE.Vector3(0, r0 * 1.2, 0), r0 * 1.45, r0, 9))
+  parts.push(bough(new THREE.Vector3(0, r0 * 1.2, 0), fork, r0, r0 * 0.72, 9))
+  for (const [x, y, z, rr] of lumps) {
+    const end = new THREE.Vector3(x, y - rr * 0.15, z)
+    if (end.distanceTo(fork) < rr * 0.3) continue
+    const mid = fork.clone().lerp(end, 0.5).add(new THREE.Vector3((r() - 0.5) * 0.3, 0.1, (r() - 0.5) * 0.3))
+    parts.push(bough(fork, mid, r0 * 0.6, r0 * 0.4))
+    parts.push(bough(mid, end, r0 * 0.4, r0 * 0.15))
+  }
+  return mergeGeometries(parts.map((p) => p.toNonIndexed()), false)
 }

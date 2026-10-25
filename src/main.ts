@@ -143,14 +143,23 @@ const NAMES: Record<string, string> = {
   winter: 'Winter',
 }
 const keyFor = (map: Record<string, string>, v: string) => Object.keys(map).find((k) => map[k] === v)?.replace('Digit', '')
+const skyPanel = document.getElementById('sky')!
+const short = matchMedia('(max-height: 500px)')
+canvas.addEventListener('pointerdown', () => skyPanel.classList.remove('open'))
 const weatherButtons = new Map<string, HTMLButtonElement>()
 const seasonButtons = new Map<string, HTMLButtonElement>()
 function button(row: HTMLElement, map: Map<string, HTMLButtonElement>, value: string, key: string | undefined, pick: () => void) {
   const b = document.createElement('button')
   b.innerHTML = NAMES[value] + (key ? `<kbd>${key}</kbd>` : '')
   b.addEventListener('click', () => {
+    // On a short (phone) screen the panel sits folded to today's weather and season; a tap unfolds it.
+    if (short.matches && !skyPanel.classList.contains('open')) {
+      skyPanel.classList.add('open')
+      return
+    }
     pick()
     input.press()
+    skyPanel.classList.remove('open')
   })
   row.appendChild(b)
   map.set(value, b)

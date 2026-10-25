@@ -26,7 +26,8 @@ import { needIcons } from './icons'
 import { loadSkyLight, surfaces } from './textures'
 import { PlantView } from './plants'
 import { GradePass, blendGrade, grade, type Grade } from './grade'
-import { fieldUniforms, seasonUniforms, shadeUniforms } from './shade'
+import { fieldUniforms, meadowUniforms, seasonUniforms, shadeUniforms } from './shade'
+import { WEATHERS } from '../sim/climate'
 import { WindView } from './wind'
 import { World, lambert, metricUV, surface } from './world'
 
@@ -51,6 +52,28 @@ const FOG_HORIZON = new THREE.Color(0xc4cace)
 const DECK = new THREE.Color(0xa3a9af)
 const RAIN_DECK = new THREE.Color(0x666d74)
 const tmp = new THREE.Color()
+
+/** A ragged, soft-edged disc, so a ring of mulch fades into the grass instead of ending in a hard circle. */
+let edge: THREE.Texture | undefined
+function mulchEdge() {
+  if (edge) return edge
+  const c = document.createElement('canvas')
+  c.width = c.height = 128
+  const g = c.getContext('2d')!
+  g.fillStyle = '#000'
+  g.fillRect(0, 0, 128, 128)
+  g.beginPath()
+  for (let i = 0; i <= 64; i++) {
+    const a = (i / 64) * Math.PI * 2
+    const r = 50 + Math.sin(a * 5) * 4 + Math.sin(a * 11 + 1) * 3
+    g.lineTo(64 + Math.cos(a) * r, 64 + Math.sin(a) * r)
+  }
+  g.fillStyle = '#fff'
+  g.filter = 'blur(6px)'
+  g.fill()
+  edge = new THREE.CanvasTexture(c)
+  return edge
+}
 
 /** Raked soil, tinted by how wet it is. */
 function soilMaterial(colour: THREE.Color) {
@@ -146,6 +169,9 @@ export class GardenScene {
         // A ring of mulch round each plant outside the bed: its colour shows the soil's moisture.
         const mat = soilMaterial(MULCH_DRY)
         const r = (T.kinds[p.kind].reach ?? 0.5) * 0.85
+        mat.alphaMap = mulchEdge()
+        mat.transparent = true
+        mat.depthWrite = false
         const ring = new THREE.Mesh(new THREE.CircleGeometry(r, 24), mat)
         ring.rotation.x = -Math.PI / 2
         ring.position.set(p.x, 0.02, p.z)
@@ -361,6 +387,13 @@ export class GardenScene {
     fieldUniforms.uTime.value = t
     fieldUniforms.uGust.value = this.gust
     fieldUniforms.uWind.value.set(c.windX, c.windZ)
+    // The air that is always moving: as strong as today's weather, the way the clouds drift.
+    const cl = garden.climate
+    const A = T.render.air
+    const air = WEATHERS.reduce((sum, w) => sum + cl.mix[w] * A[w], 0)
+    fieldUniforms.uAir.value = Math.max(air, this.gust)
+    fieldUniforms.uAirDir.value.set(cl.windX, cl.windZ)
+    meadowUniforms.uCenter.value.copy(this.focus)
 
     const look = garden.climate.look
     seasonUniforms.uSeason.value.set(look.spring, look.summer, look.autumn, look.winter)
@@ -378,7 +411,7 @@ export class GardenScene {
     this.world.setWinter(look.winter)
     // Lit windows at night, and a glow when someone is in watching the weather.
     this.world.setNight(night, this.people.watching(garden))
-    this.world.fadeOak(c.x, c.z, dt)
+    this.world.fadeOak(c.x, c.z, this.camera.position, dt)
 
     garden.plants.forEach((p, i) => {
       const view = this.plants[i]

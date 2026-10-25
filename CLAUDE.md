@@ -41,8 +41,17 @@ the rules: `docs/notes.md`.
   in the `keep` list or use a material only it owns, or the change stops
   reaching the screen. Animals and people weld per moving part (`weldParts`);
   repeated flowers, bees and butterflies are instanced.
-- **Grass blades** are double-sided with up-pointing normals; the grass shader
-  undoes three.js's back-face flip. Remove it and the lawn gets black streaks.
+- **Grass** is the island proof's meadow: one tuft drawn tufts x tufts times,
+  each placed in the vertex shader from `gl_InstanceID` on a grid snapped to the
+  camera's focus (`meadowUniforms`), kept off bed, pond and paving by a mask
+  texture. Blades are double-sided with up normals, and the shader undoes
+  three.js's back-face flip (remove it and the lawn gets black streaks).
+- **One wind:** `fwGustAt` in `shade.ts` is a gust field travelling downwind
+  (`uAir`, `uAirDir`, from the climate). Grass and tree crowns both read it, so a
+  gust crosses everything at once. New swaying things should read it too.
+- **Tree crowns** are `canopy()` sprays of real leaves over darker lumps, with
+  normals bent out from the centre; trunks fork into a bough per lump (`trunk()`).
+  The oak is front-faced only and fades when the camera is inside it.
 - **Plant foliage** is welded per plant (`Bundle` in `render/leaves.ts`); anything
   added needs a vertex colour (`painted`) or it renders black.
 - Photographed surfaces are laid on in metres (`metricUV`); `T.look.tile` is

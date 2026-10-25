@@ -512,7 +512,18 @@ export const T = {
     shadeDarkness: 0.55,
     rainDrops: 3000,
     rainSpeed: 16,
-    grassClumps: 45000,
+    /**
+     * Meadow grass, after the island proof: tufts laid out on a grid round the
+     * camera's focus in the vertex shader (cell in metres, tufts a side), fading
+     * out at the edge. Phones and ?lite get the coarser grid.
+     */
+    meadow: { cell: 0.2, tufts: 220, cellLite: 0.3, tuftsLite: 130, height: 0.36 },
+    /**
+     * The air that is always moving, as gusts travelling downwind across the
+     * whole garden. Strength 0 calm to 1 gale, per weather; gust size in metres
+     * and speed in metres a second.
+     */
+    air: { clear: 0.3, overcast: 0.45, rain: 0.6, fog: 0.08, snow: 0.35, size: 9, speed: 3.5 },
     fogBanks: 40,
     /** Seconds a fog bank lingers after it settles. */
     fogLingers: 60,
@@ -526,6 +537,8 @@ export const T = {
     butterflies: 24,
     fireflies: 140,
     windWisps: 60,
+    /** Tree crowns: leaf sprays per square metre of crown surface, and how much of the crown's lump shows inside them. */
+    canopy: { sprays: 5, core: 0.8 },
   },
 
   audio: {

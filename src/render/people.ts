@@ -39,6 +39,12 @@ interface Figure {
   legR: THREE.Group
   armL: THREE.Group
   armR: THREE.Group
+  kneeL: THREE.Group
+  kneeR: THREE.Group
+  elbowL: THREE.Group
+  elbowR: THREE.Group
+  handL: THREE.Group
+  handR: THREE.Group
   props: Partial<Record<Exclude<Carry, null> | 'umbrellaUp' | 'produce', THREE.Object3D>>
   produce: THREE.MeshStandardMaterial
   bubble: THREE.Sprite
@@ -46,13 +52,32 @@ interface Figure {
   phase: number
 }
 
-function limb(color: number, length: number, width: number, x: number, y: number) {
+/**
+ * A jointed limb: an upper part hanging from the group's origin, and a lower
+ * part on its own joint (knee or elbow) so it can bend. Both taper, and a
+ * rounded joint hides the seam.
+ */
+function limb(upper: number, lower: number, length: number, width: number, x: number, y: number) {
   const g = new THREE.Group()
   g.position.set(x, y, 0)
-  const m = part(leg, std(color), 0, 0, 0, width, length, width)
+  const half = length * 0.52
+  g.add(part(leg, std(upper), 0, 0, 0, width, half, width * 0.92))
+  const joint = new THREE.Group()
+  joint.position.y = -half
+  joint.add(part(ball, std(lower), 0, 0, 0, width * 0.82, width * 0.82, width * 0.82))
+  joint.add(part(leg, std(lower), 0, 0, 0, width * 0.8, length - half, width * 0.75))
+  const end = new THREE.Group()
+  end.position.y = -(length - half)
+  joint.add(end)
+  g.add(joint)
+  return { g, joint, end }
+}
+
+/** A body of revolution from (radius, height) pairs, flattened front to back. */
+function turned(points: [number, number][], color: number, depth: number) {
+  const m = part(new THREE.LatheGeometry(points.map(([r, y]) => new THREE.Vector2(r, y)), 18), std(color), 0, 0, 0, 1, 1, depth)
   m.castShadow = true
-  g.add(m)
-  return g
+  return m
 }
 
 function figure(rose: boolean, scene: THREE.Scene): Figure {
@@ -60,54 +85,72 @@ function figure(rose: boolean, scene: THREE.Scene): Figure {
   const skin = 0xe8c4a8
   const top = rose ? 0x5b7fa6 : 0x6e7b52
   const lower = rose ? 0x5b7fa6 : 0x4a4f5c
-  const legL = limb(rose ? skin : lower, 0.82, 0.07, -0.09, 0.85)
-  const legR = limb(rose ? skin : lower, 0.82, 0.07, 0.09, 0.85)
-  for (const l of [legL, legR]) l.add(part(block, std(0x3a2e26), 0, -0.82, 0.05, 0.1, 0.07, 0.2))
-  root.add(legL, legR)
+  const shoe = 0x3a2e26
+  // Legs: thigh, knee, shin and a shoe with a toe. Rose's shins are stockinged.
+  const L = limb(lower, rose ? 0xd9b89c : lower, 0.82, 0.075, -0.09, 0.85)
+  const R = limb(lower, rose ? 0xd9b89c : lower, 0.82, 0.075, 0.09, 0.85)
+  for (const l of [L, R]) {
+    l.end.add(part(block, std(shoe), 0, -0.02, 0.04, 0.1, 0.07, 0.22))
+    l.end.add(part(ball, std(shoe), 0, -0.03, 0.12, 0.05, 0.035, 0.06))
+  }
+  root.add(L.g, R.g)
   const hips = new THREE.Group()
   hips.position.y = 0.85
   root.add(hips)
   if (rose) {
-    // A dress: a cone from the waist to the knee, and an apron.
-    const skirt = part(peak, std(top), 0, -0.2, 0, 0.3, 0.55, 0.26)
-    skirt.castShadow = true
-    hips.add(skirt)
-    hips.add(part(block, std(0xf1ece0), 0, -0.15, 0.17, 0.26, 0.4, 0.02))
+    // A dress: a fitted bodice over a skirt that flares to below the knee, and an apron.
+    hips.add(turned([[0.0, -0.52], [0.27, -0.52], [0.25, -0.35], [0.19, -0.1], [0.15, 0.04], [0.0, 0.05]], top, 0.85))
+    hips.add(turned([[0.0, 0.0], [0.14, 0.0], [0.13, 0.14], [0.16, 0.36], [0.18, 0.5], [0.13, 0.6], [0.05, 0.64], [0.0, 0.64]], top, 0.62))
+    hips.add(part(block, std(0xf1ece0), 0, -0.2, 0.18, 0.28, 0.5, 0.02))
+    hips.add(part(block, std(0xf1ece0), 0, 0.02, 0.0, 0.3, 0.04, 0.27))
   } else {
+    // Trousers to the waist, and a work coat that hangs just past the hips.
     hips.add(part(block, std(lower), 0, -0.04, 0, 0.3, 0.16, 0.2))
+    hips.add(turned([[0.0, -0.14], [0.19, -0.14], [0.18, 0.08], [0.17, 0.3], [0.2, 0.48], [0.19, 0.57], [0.11, 0.63], [0.05, 0.65], [0.0, 0.65]], top, 0.62))
+    // Collar, pockets and a row of buttons, so the coat reads as a coat.
+    hips.add(part(block, std(0x5c6844), 0, 0.6, 0.02, 0.24, 0.06, 0.16))
+    for (const x of [-0.1, 0.1]) hips.add(part(block, std(0x5c6844), x, 0.02, 0.12, 0.1, 0.08, 0.015))
+    for (let i = 0; i < 3; i++) hips.add(part(ball, std(0x3a3328), 0, 0.12 + i * 0.13, 0.125, 0.012, 0.012, 0.008))
   }
-  const torso = part(block, std(top), 0, 0.3, 0, rose ? 0.32 : 0.38, 0.6, 0.22)
-  torso.castShadow = true
-  hips.add(torso)
   const head = new THREE.Group()
   head.position.y = 0.74
   hips.add(head)
-  head.add(part(ball, std(skin), 0, 0.11, 0, 0.11, 0.13, 0.11))
+  head.add(part(ball, std(skin), 0, 0.12, 0.005, 0.105, 0.125, 0.11))
+  // Ears, a nose and a chin, so the head has a front.
+  for (const x of [-0.104, 0.104]) head.add(part(ball, std(skin), x, 0.11, 0, 0.018, 0.03, 0.014))
+  head.add(part(ball, std(skin), 0, 0.1, 0.11, 0.02, 0.026, 0.024))
+  head.add(part(ball, std(skin), 0, 0.03, 0.06, 0.06, 0.04, 0.05))
   if (rose) {
     // Grey hair and a bun.
-    head.add(part(ball, std(0xc9c6c0), 0, 0.15, -0.02, 0.115, 0.11, 0.115))
+    head.add(part(ball, std(0xc9c6c0), 0, 0.16, -0.02, 0.112, 0.105, 0.112))
     head.add(part(ball, std(0xc9c6c0), 0, 0.2, -0.1, 0.06, 0.06, 0.06))
   } else {
-    // A flat cap.
-    head.add(part(ball, std(0x6b5a44), 0, 0.19, 0, 0.12, 0.05, 0.12))
-    head.add(part(block, std(0x6b5a44), 0, 0.18, 0.1, 0.16, 0.02, 0.1))
+    // Grey at the sides, and a flat cap.
+    head.add(part(ball, std(0xb8b4ac), 0, 0.12, -0.02, 0.108, 0.08, 0.105))
+    head.add(part(ball, std(0x6b5a44), 0, 0.2, 0, 0.118, 0.05, 0.12))
+    head.add(part(block, std(0x6b5a44), 0, 0.19, 0.1, 0.16, 0.02, 0.1))
   }
-  const armL = limb(top, 0.6, 0.06, -0.21, 0.56)
-  const armR = limb(top, 0.6, 0.06, 0.21, 0.56)
-  for (const a of [armL, armR]) {
-    a.add(part(ball, std(skin), 0, -0.62, 0, 0.05, 0.055, 0.045))
+  head.add(part(leg, std(skin), 0, 0.03, 0, 0.045, 0.07, 0.045))
+  // Arms: upper arm, elbow, forearm and a hand. The hand keeps the upper arm's
+  // angle, so whatever it holds hangs as it did before the arm could bend.
+  const AL = limb(top, top, 0.58, 0.058, -0.205, 0.56)
+  const AR = limb(top, top, 0.58, 0.058, 0.205, 0.56)
+  for (const a of [AL, AR]) {
+    a.end.add(part(ball, std(skin), 0, -0.04, 0.005, 0.045, 0.06, 0.035))
     // A rounded shoulder, so the arm grows out of the body rather than hanging beside it.
-    a.add(part(ball, std(top), 0, -0.02, 0, 0.075, 0.08, 0.08))
+    a.g.add(part(ball, std(top), 0, -0.01, 0, 0.075, 0.08, 0.08))
   }
-  head.add(part(leg, std(skin), 0, 0.02, 0, 0.045, 0.06, 0.045))
-  head.add(part(ball, std(skin), 0, 0.1, 0.11, 0.022, 0.025, 0.025))
-  hips.add(armL, armR)
+  hips.add(AL.g, AR.g)
+  const legL = L.g
+  const legR = R.g
+  const armL = AL.g
+  const armR = AR.g
 
   // Things to carry, held in the right hand (or both, for the basket).
   const hand = (o: THREE.Object3D) => {
-    o.position.y = -0.62
+    o.position.y = -0.04
     o.visible = false
-    armR.add(o)
+    AR.end.add(o)
     return o
   }
   const wicker = std(0xb08850)
@@ -169,7 +212,8 @@ function figure(rose: boolean, scene: THREE.Scene): Figure {
   }
   root.visible = false
   scene.add(root)
-  return { root, hips, head, legL, legR, armL, armR, props, produce, bubble, light, phase: rose ? 0 : 1.7 }
+  const joints = { kneeL: L.joint, kneeR: R.joint, elbowL: AL.joint, elbowR: AR.joint, handL: AL.end, handR: AR.end }
+  return { root, hips, head, legL, legR, armL, armR, ...joints, props, produce, bubble, light, phase: rose ? 0 : 1.7 }
 }
 
 /** A thought bubble: a small picture, never words. */
@@ -275,7 +319,7 @@ export class PeopleView {
     this.walter = figure(false, scene)
     // Weld each body part's pieces; the things they carry stay separate, to be shown and tinted.
     for (const f of [this.rose, this.walter]) {
-      for (const j of [f.root, f.hips, f.head, f.legL, f.legR, f.armL, f.armR]) weld(j, () => false, true)
+      for (const j of [f.root, f.hips, f.head, f.legL, f.legR, f.armL, f.armR, f.kneeL, f.kneeR, f.elbowL, f.elbowR, f.handL]) weld(j, () => false, true)
     }
     for (const e of ['happy', 'tea', 'surprised', 'cold', 'note'] as Emote[]) this.emotes.set(e, emoteTexture(e))
 
@@ -551,6 +595,18 @@ export class PeopleView {
       f.armR.rotation.z = 0.25
     }
     if (carry === 'lantern' && p.moving) f.armR.rotation.x = -0.6
+
+    // Knees and elbows follow the limbs: a thigh raised forward or swung back
+    // bends the knee (sitting puts the shin straight down), and arms always
+    // keep a little bend, more as they come up.
+    for (const [legG, knee] of [[f.legL, f.kneeL], [f.legR, f.kneeR]] as const) {
+      const a = legG.rotation.x
+      knee.rotation.x = 0.06 + Math.max(0, -a) + Math.max(0, a) * 0.9
+    }
+    for (const [arm, elbow, hand] of [[f.armL, f.elbowL, f.handL], [f.armR, f.elbowR, f.handR]] as const) {
+      elbow.rotation.x = -0.18 - Math.min(0.55, Math.max(0, -arm.rotation.x) * 0.3)
+      hand.rotation.x = -elbow.rotation.x
+    }
 
     if (f.light) {
       const want = carry === 'lantern' ? 2.2 + Math.sin(t * 13) * 0.15 : 0

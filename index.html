@@ -256,6 +256,66 @@
           display: none;
         }
       }
+      /* Phones held sideways: fold the HUD to slim pills so the garden shows. */
+      @media (max-height: 500px) {
+        .card {
+          font-size: 12px;
+          padding: 4px 10px;
+          border-radius: 11px;
+        }
+        #hint,
+        #count {
+          top: 10px;
+        }
+        #count {
+          right: calc(10px + var(--sr));
+        }
+        #journal {
+          top: 40px;
+          right: calc(10px + var(--sr));
+          width: auto;
+          max-width: 260px;
+        }
+        #journal:not(.closed) {
+          width: 240px;
+        }
+        #storm {
+          left: calc(10px + var(--sl));
+          bottom: calc(10px + var(--sb));
+          min-width: 0;
+          padding: 4px 10px 7px;
+        }
+        #sky {
+          right: calc(10px + var(--sr));
+          bottom: calc(10px + var(--sb));
+          padding: 4px 6px;
+          font-size: 13px;
+        }
+        #sky:not(.open) {
+          grid-auto-flow: column;
+        }
+        #sky kbd {
+          display: none;
+        }
+        #sky:not(.open) .label,
+        #sky:not(.open) button:not(.now) {
+          display: none;
+        }
+        #sky:not(.open) button.now {
+          background: transparent;
+          border-color: transparent;
+          color: inherit;
+          box-shadow: none;
+          min-height: 32px;
+        }
+        #sky.open button {
+          min-height: 34px;
+          padding: 2px 11px;
+        }
+        #tip {
+          bottom: 56px;
+        }
+      }
       #portrait {
         display: none;
         left: 50%;

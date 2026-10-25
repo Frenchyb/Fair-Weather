@@ -10,6 +10,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import lanternGlb from '../assets/lantern.glb'
 import { weld } from './batch'
+import { canopy, trunk, type Lump } from './leaves'
 import { shaded } from './shade'
 import { surfaces } from './textures'
 
@@ -192,10 +193,13 @@ export class World {
 
   /**
    * The oak stands between the camera and the ferns it shades, so its crown
-   * turns see-through while the cloud is working near it.
+   * turns see-through while the cloud is working near it, and while the
+   * camera is up among its leaves.
    */
-  fadeOak(cloudX: number, cloudZ: number, dt: number) {
-    const near = Math.hypot(cloudX - T.oak.x, cloudZ - T.oak.z) < T.oak.crownRadius + 3
+  fadeOak(cloudX: number, cloudZ: number, camera: THREE.Vector3, dt: number) {
+    const o = T.oak
+    const inside = Math.hypot(camera.x - o.x, camera.y - o.crownHeight, camera.z - o.z) < o.crownRadius * 1.8
+    const near = inside || Math.hypot(cloudX - o.x, cloudZ - o.z) < o.crownRadius + 3
     for (const m of this.oakLeaves) {
       m.opacity += ((near ? 0.28 : 1) - m.opacity) * (1 - Math.exp(-dt * 4))
       m.transparent = m.opacity < 0.99
@@ -258,18 +262,26 @@ export class World {
       shrub(y.x0 - 1.6 - r() * 0.5, z, 0.7 + r() * 0.5)
       shrub(y.x1 + 1.6 + r() * 0.5, z, 0.7 + r() * 0.5)
     }
-    const trunk = new THREE.CylinderGeometry(0.25, 0.35, 3, 7)
-    trunk.translate(0, 1.5, 0)
     const bark = surface('bark', 0xb8a898, 0.95)
-    for (let x = y.x0 - 6; x <= y.x1 + 6; x += 4 + r() * 3) {
+    const C = T.render.canopy
+    // Three tree shapes, used round the boundary at different sizes and turns.
+    const shapes: Lump[][] = [
+      [[0, 4.2, 0, 1.9], [1.2, 3.6, 0.3, 1.3], [-1.1, 3.7, -0.2, 1.4], [0.2, 5.2, -0.3, 1.2]],
+      [[0, 4.6, 0, 1.6], [0.9, 3.9, -0.6, 1.2], [-0.8, 4.0, 0.7, 1.2]],
+      [[0, 3.9, 0, 2.1], [1.4, 3.4, 0.6, 1.2], [-1.3, 3.3, 0.5, 1.1], [0.3, 4.5, -1.1, 1.3]],
+    ]
+    const leaf = { length: 1, width: 0.55, widest: 0.45, fold: 0.3, curl: 0.2 }
+    const crowns = shapes.map((l, i) => canopy(l, leaf, 0.34, C.sprays * 0.6, C.core, 40 + i, [3, 1]))
+    const trunks = shapes.map((l, i) => trunk(l, 2.6, 0.24, 40 + i))
+    let k = 0
+    for (let x = y.x0 - 6; x <= y.x1 + 6; x += 4 + r() * 3, k++) {
       const t = new THREE.Group()
-      add(t, new THREE.Mesh(trunk, bark), true, false)
-      const c = new THREE.Mesh(crown, leaves(new THREE.Color().setHSL(0.27 + r() * 0.04, 0.35, 0.25 + r() * 0.06)))
-      c.position.y = 4
-      c.scale.set(2.4, 2.2, 2.4)
+      add(t, new THREE.Mesh(trunks[k % 3], bark), true, false)
+      const c = new THREE.Mesh(crowns[k % 3], leaves(new THREE.Color().setHSL(0.27 + r() * 0.04, 0.35, 0.3 + r() * 0.06)))
       add(t, c, true, false)
       this.crowns.push(c)
       t.position.set(x, 0, back - 5 - r() * 3)
+      t.rotation.y = r() * Math.PI * 2
       t.scale.setScalar(0.9 + r() * 0.5)
       this.root.add(t)
     }
@@ -460,23 +472,21 @@ export class World {
     const o = T.oak
     const r = rng(23)
     const g = new THREE.Group()
-    const trunk = new THREE.CylinderGeometry(0.35, 0.55, o.crownHeight, 9)
-    trunk.translate(0, o.crownHeight / 2, 0)
-    const oakBark = surface('bark', 0xb0a090, 0.95)
-    add(g, new THREE.Mesh(trunk, oakBark))
-    const crowns = [foliage(1), foliage(2.2), foliage(4.1)]
+    const lumps: Lump[] = []
     for (let i = 0; i < 9; i++) {
-      const crown = crowns[i % 3]
       const a = (i / 9) * Math.PI * 2
       const d = i === 0 ? 0 : o.crownRadius * (0.45 + r() * 0.25)
-      const mat = leaves(new THREE.Color().setHSL(0.26 + r() * 0.03, 0.42, 0.26 + r() * 0.06))
-      this.oakLeaves.push(mat)
-      const c = new THREE.Mesh(crown, mat)
-      c.position.set(Math.cos(a) * d, o.crownHeight + (r() - 0.3) * 0.9, Math.sin(a) * d)
-      c.scale.setScalar(o.crownRadius * (0.5 + r() * 0.2))
-      add(g, c, true, false)
-      this.crowns.push(c)
+      lumps.push([Math.cos(a) * d, o.crownHeight + (r() - 0.3) * 0.9, Math.sin(a) * d, o.crownRadius * (0.5 + r() * 0.2)])
     }
+    const oakBark = surface('bark', 0xb0a090, 0.95)
+    add(g, new THREE.Mesh(trunk(lumps, o.crownHeight * 0.55, 0.42, 23), oakBark))
+    const oakLeaf = { length: 1, width: 0.7, widest: 0.5, fold: 0.25, curl: 0.2, ruffle: 0.08 }
+    const mat = leaves(new THREE.Color().setHSL(0.27, 0.42, 0.3))
+    // Front faces only: the camera can sit up inside the oak's crown, and from in there it should vanish.
+    this.oakLeaves.push(mat)
+    const c = new THREE.Mesh(canopy(lumps, oakLeaf, 0.28, T.render.canopy.sprays * 1.4, T.render.canopy.core, 23, [3, 1]), mat)
+    add(g, c, true, false)
+    this.crowns.push(c)
     g.position.set(o.x, 0, o.z)
     this.root.add(g)
   }
