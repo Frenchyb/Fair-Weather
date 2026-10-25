@@ -6,6 +6,7 @@
 import * as THREE from 'three'
 import { T } from '../tuning'
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import lanternGlb from '../assets/lantern.glb'
@@ -120,8 +121,13 @@ function add(parent: THREE.Object3D, mesh: THREE.Mesh, cast = true, receive = tr
   return mesh
 }
 
+/** A box with softly rounded edges: a raw box's knife edges read as a toy at play distance. */
+export function rounded(w: number, h: number, d: number) {
+  return new RoundedBoxGeometry(w, h, d, 2, Math.min(0.03, Math.min(w, h, d) * 0.25))
+}
+
 function box(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number) {
-  const m = new THREE.Mesh(metricUV(new THREE.BoxGeometry(w, h, d)), mat)
+  const m = new THREE.Mesh(metricUV(rounded(w, h, d)), mat)
   m.position.set(x, y, z)
   return m
 }
@@ -227,7 +233,7 @@ export class World {
   private boundary() {
     const r = this.r
     const wood = surface('wood', 0xd9c7ad)
-    const post = metricUV(new THREE.BoxGeometry(0.12, 1.3, 0.12))
+    const post = metricUV(rounded(0.12, 1.3, 0.12))
     const y = T.yard
     const back = y.z0 - 0.5
     const run = (x0: number, z0: number, x1: number, z1: number) => {
@@ -240,7 +246,7 @@ export class World {
         add(this.root, p, true, false)
       }
       for (const h of [0.45, 1.05]) {
-        const rail = new THREE.Mesh(metricUV(new THREE.BoxGeometry(len, 0.1, 0.06)), wood)
+        const rail = new THREE.Mesh(metricUV(rounded(len, 0.1, 0.06)), wood)
         rail.position.set((x0 + x1) / 2, h, (z0 + z1) / 2)
         rail.rotation.y = -Math.atan2(z1 - z0, x1 - x0)
         add(this.root, rail, true, false)

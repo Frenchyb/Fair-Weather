@@ -57,7 +57,15 @@ the rules: `docs/notes.md`.
 - Photographed surfaces are laid on in metres (`metricUV`); `T.look.tile` is
   metres per tile. Boxes from `box()` get it automatically.
 - The colour grade (`render/grade.ts`) runs after `OutputPass`, in display space.
-  Tone mapping is AgX. Grey days lower exposure, because the sky is rarely in view.
+  Tone mapping is Neutral. Grey days lower exposure, because the sky is rarely in view.
+  Sky light is generated (`skyLight()`), no HDR file.
+- **Debug views (V):** greyscale, clay (light and shadow only) and normals, with
+  mean light, near-black and blown-out shares on the overlay. Read the numbers
+  before tuning a look by eye.
+- **One shadow rule:** everything in the garden, people and animals included, uses
+  a `shaded()` material, so the cloud's and drifting clouds' shade darkens it all
+  together (`creature` skips snow). A plain material won't darken under the cloud.
+- Dead ends are logged at the bottom of `docs/notes.md`; add to it when you drop something.
 - Shared geometry: `leg` hangs down from its origin and `cone` points along +z.
 - Models go through `npm run shrink` (meshopt); the loader carries the decoder.
 - Sound effects only, no music (Rick's call). Every new creature or chore gets a

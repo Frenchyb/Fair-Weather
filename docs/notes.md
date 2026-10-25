@@ -120,3 +120,31 @@ three.js, Vite, vitest. Concept and plan: `/mnt/project-files/weather-game/conce
 - Photographed wood, roof, plaster and bark are laid on in metres by
   `metricUV`, so their repeat in `T.look.tile` is metres per tile. Boxes from
   `box()` get it automatically.
+
+## Dead ends
+
+Things tried and dropped, so nobody tries them again.
+
+- **Pointer lock for the cloud** (inherited from the AC-130 game's lesson): effects
+  landing away from the pointer read as a bug. The cloud follows the ground point
+  under the pointer instead.
+- **Cloned materials in the static weld** stopped runtime tint changes reaching
+  the screen; the weld now reuses a material every piece shares.
+- **Baking a kept material's colour into vertex colours** applied the tint twice
+  and turned the boxwood balls near-black (2026-10-24). Bake the tint only when
+  the material is cloned.
+- **Tree crowns as a few smooth lumps** read as "blobs on sticks" (fresh-eyes
+  review). Crowns are leaf sprays now; a solid core is kept only inside, darker.
+- **One uniform downwind lean on the grass** read as combed fur. Lean now turns
+  by patch, and only a gust band lays the grass right over.
+- **Star-shaped leaf sprays** (5-7 leaves evenly round a point) read as maple
+  leaves on the apple trees. Sprays are 3-5 leaves at uneven angles.
+- **A screenshot mark with the camera inside the oak** (orchard mark at focus
+  11, -4): the crown filled the frame. The oak now fades when the camera is in it.
+- **A shader varying assigned before it was declared** made the grass vanish
+  with no page error, only a console one. `tools/shot.mjs` now reports console
+  errors.
+- **AgX tone mapping** took colour out that the grade had to put back; switched
+  to Neutral (playbook 2.3) for a colourful garden.
+- **A 1.4 MB HDR sky** for environment light; the generated sky dome costs nothing
+  and matches the sky we draw.

@@ -73,9 +73,10 @@ export const seasonUniforms = {
 /**
  * - `foliage`: leaves that turn in autumn and fall in winter.
  * - `evergreen`: leaves that stay, and only dull a little in winter.
- * Everything takes snow on its upward faces.
+ * - `creature`: people, animals and what they carry: shade only, no snow on their backs.
+ * Everything else takes snow on its upward faces.
  */
-export type GroundFx = 'plain' | 'wet' | 'lawn' | 'grass' | 'foliage' | 'evergreen'
+export type GroundFx = 'plain' | 'wet' | 'lawn' | 'grass' | 'foliage' | 'evergreen' | 'creature'
 
 const FIELD_COMMON = `
 uniform sampler2D uField;
@@ -351,7 +352,7 @@ export function shaded<M extends THREE.Material>(material: M, fx: GroundFx = 'pl
         diffuseColor.rgb *= 1.0 - uSeason.w * 0.2;`,
       )
     }
-    fs = fs.replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>\n${SNOW(fx === 'lawn' || fx === 'grass')}`)
+    if (fx !== 'creature') fs = fs.replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>\n${SNOW(fx === 'lawn' || fx === 'grass')}`)
     shader.fragmentShader = fs.replace(
       '#include <dithering_fragment>',
       `float shadeCover = 1.0 - smoothstep(uRadius - uSoft * 0.5, uRadius + uSoft * 0.5,

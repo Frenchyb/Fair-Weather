@@ -482,7 +482,7 @@ export const T = {
    * added to the darkest (display-space RGB, 0..1).
    */
   look: {
-    exposure: 1.0,
+    exposure: 1.45,
     sun: 4.2,
     /** Sky fill from the hemisphere light and the sky's own reflections, at noon. */
     fill: 0.38,
@@ -493,14 +493,14 @@ export const T = {
     /** Metres covered by one repeat of each photographed surface. */
     tile: { wood: 1.6, roof: 2.2, plaster: 2.5 },
     grades: {
-      clear: { saturation: 1.12, contrast: 0.3, high: [1.0, 0.97, 0.9], low: [0.01, 0.035, 0.07], vignette: 0.3 },
-      overcast: { saturation: 1.0, contrast: 0.16, high: [0.97, 0.98, 1.0], low: [0.03, 0.045, 0.06], vignette: 0.32 },
-      rain: { saturation: 0.9, contrast: 0.2, high: [0.93, 0.96, 1.0], low: [0.02, 0.04, 0.06], vignette: 0.38 },
-      fog: { saturation: 0.85, contrast: 0.04, high: [0.98, 0.98, 0.97], low: [0.08, 0.09, 0.1], vignette: 0.24 },
-      snow: { saturation: 0.95, contrast: 0.14, high: [0.97, 0.98, 1.0], low: [0.02, 0.04, 0.08], vignette: 0.28 },
-      dusk: { saturation: 1.25, contrast: 0.22, high: [1.0, 0.88, 0.72], low: [0.05, 0.02, 0.07], vignette: 0.36 },
-      night: { saturation: 0.85, contrast: 0.18, high: [0.85, 0.9, 1.0], low: [0.0, 0.015, 0.05], vignette: 0.5 },
-      storm: { saturation: 0.75, contrast: 0.26, high: [0.9, 0.94, 1.0], low: [0.0, 0.01, 0.02], vignette: 0.5 },
+      clear: { saturation: 0.50, contrast: 0.3, high: [1.0, 0.97, 0.9], low: [0.01, 0.035, 0.07], vignette: 0.3 },
+      overcast: { saturation: 0.45, contrast: 0.16, high: [0.97, 0.98, 1.0], low: [0.03, 0.045, 0.06], vignette: 0.32 },
+      rain: { saturation: 0.41, contrast: 0.2, high: [0.93, 0.96, 1.0], low: [0.02, 0.04, 0.06], vignette: 0.38 },
+      fog: { saturation: 0.38, contrast: 0.04, high: [0.98, 0.98, 0.97], low: [0.08, 0.09, 0.1], vignette: 0.24 },
+      snow: { saturation: 0.43, contrast: 0.14, high: [0.97, 0.98, 1.0], low: [0.02, 0.04, 0.08], vignette: 0.28 },
+      dusk: { saturation: 0.56, contrast: 0.22, high: [1.0, 0.88, 0.72], low: [0.05, 0.02, 0.07], vignette: 0.36 },
+      night: { saturation: 0.38, contrast: 0.18, high: [0.85, 0.9, 1.0], low: [0.0, 0.015, 0.05], vignette: 0.5 },
+      storm: { saturation: 0.34, contrast: 0.26, high: [0.9, 0.94, 1.0], low: [0.0, 0.01, 0.02], vignette: 0.5 },
     },
   },
 

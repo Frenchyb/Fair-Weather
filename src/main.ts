@@ -112,6 +112,33 @@ if (perfOn) perf.style.display = 'block'
 // Phones have no P key: tapping the count card toggles the overlay too.
 count.style.pointerEvents = 'auto'
 count.addEventListener('click', () => input.onTogglePerf?.())
+// Debug views (V) show the overlay too, with numbers read off the picture: how
+// bright it is on average, and how much of it is near black or blown out.
+input.onDebugView = () => {
+  const V = GardenScene.VIEWS
+  view.view = V[(V.indexOf(view.view) + 1) % V.length]
+  perfOn = view.view !== 'normal' || perfOn
+  perf.style.display = perfOn ? 'block' : 'none'
+}
+const probe = document.createElement('canvas')
+probe.width = 64
+probe.height = 40
+function pictureStats() {
+  const g = probe.getContext('2d', { willReadFrequently: true })!
+  g.drawImage(canvas, 0, 0, probe.width, probe.height)
+  const px = g.getImageData(0, 0, probe.width, probe.height).data
+  let sum = 0
+  let dark = 0
+  let bright = 0
+  const n = px.length / 4
+  for (let i = 0; i < px.length; i += 4) {
+    const l = (0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) / 255
+    sum += l
+    if (l < 0.06) dark++
+    if (l > 0.95) bright++
+  }
+  return { mean: sum / n, dark: dark / n, bright: bright / n }
+}
 function showPerf(wall: number) {
   perfFrames++
   perfClock += wall
@@ -126,6 +153,13 @@ function showPerf(wall: number) {
     row('draw calls', info.calls, info.calls <= b.drawCalls),
     row('triangles', info.triangles, info.triangles <= b.triangles),
     `<span>pixel ratio ${view.renderer.getPixelRatio()}</span>`,
+    ...(view.view === 'normal'
+      ? []
+      : (() => {
+          const st = pictureStats()
+          const pc = (v: number) => `${Math.round(v * 100)}%`
+          return [`<span>view ${view.view} (V)</span>`, `<span>mean light ${pc(st.mean)}</span>`, `<span>near black ${pc(st.dark)}, blown ${pc(st.bright)}</span>`]
+        })()),
   ].join('<br>')
 }
 

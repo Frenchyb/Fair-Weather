@@ -45,6 +45,7 @@ export class Input {
   onToggleJournal?: () => void
   /** P: the performance overlay. */
   onTogglePerf?: () => void
+  onDebugView?: () => void
   /** A weather or season asked for since last read: keys 0-5 and 6-9, or the buttons. */
   weatherAsked: WeatherKind | 'auto' | null = null
   seasonAsked: Season | 'auto' | null = null
@@ -123,6 +124,8 @@ export class Input {
         this.onToggleJournal?.()
       } else if (e.code === 'KeyP' && !e.repeat) {
         this.onTogglePerf?.()
+      } else if (e.code === 'KeyV' && !e.repeat) {
+        this.onDebugView?.()
       } else if (PAN_KEYS[e.code] || e.code === 'KeyQ' || e.code === 'KeyE') {
         e.preventDefault()
         this.keys.add(e.code)

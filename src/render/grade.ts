@@ -31,13 +31,15 @@ const GradeShader = {
     uVignette: { value: 0 },
     uAspect: { value: 1 },
     uSeed: { value: 0 },
+    /** 1 for the greyscale debug view: values only. */
+    uGrey: { value: 0 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
     void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse;
-    uniform float uSaturation, uContrast, uVignette, uAspect, uSeed;
+    uniform float uSaturation, uContrast, uVignette, uAspect, uSeed, uGrey;
     uniform vec3 uHigh, uLow;
     varying vec2 vUv;
     float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + uSeed) * 43758.5453); }
@@ -60,6 +62,7 @@ const GradeShader = {
       c *= 1.0 - uVignette * smoothstep(0.35, 1.05, length(v) * 1.25);
       // A trace of dither, so the sky's gradients do not band.
       c += (hash(vUv * 731.0) - 0.5) / 255.0;
+      c = mix(c, vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), uGrey);
       gl_FragColor = vec4(clamp(c, 0.0, 1.0), src.a);
     }`,
 }

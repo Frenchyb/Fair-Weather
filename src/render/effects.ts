@@ -4,6 +4,7 @@
  * shimmer over soil that lightning has enriched. Reads the garden only.
  */
 import * as THREE from 'three'
+import { shaded } from './shade'
 import type { Garden } from '../sim/garden'
 import { T } from '../tuning'
 
@@ -91,9 +92,9 @@ export class Effects {
     wing.setAttribute('color', new THREE.Float32BufferAttribute(shade, 3))
     const thorax = new THREE.CapsuleGeometry(0.008, 0.05, 2, 6)
     thorax.rotateX(Math.PI / 2)
-    const dark = new THREE.MeshStandardMaterial({ color: 0x2a2018 })
+    const dark = shaded(new THREE.MeshStandardMaterial({ color: 0x2a2018 }), 'creature')
     const flock = T.render.butterflies
-    this.wings = new THREE.InstancedMesh(wing, new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, vertexColors: true, roughness: 0.6 }), flock * 2)
+    this.wings = new THREE.InstancedMesh(wing, shaded(new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, vertexColors: true, roughness: 0.6 }), 'creature'), flock * 2)
     this.bodies = new THREE.InstancedMesh(thorax, dark, flock)
     this.wings.count = this.bodies.count = 0
     this.wings.frustumCulled = this.bodies.frustumCulled = false

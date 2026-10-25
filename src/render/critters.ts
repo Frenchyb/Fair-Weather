@@ -11,7 +11,8 @@ import { shaded } from './shade'
 
 export type Made = { root: THREE.Group; parts: Record<string, THREE.Object3D> }
 
-export const std = (color: number, rough = 0.8) => new THREE.MeshStandardMaterial({ color, roughness: rough })
+// Shaded like everything else in the garden, so a robin under the cloud darkens with the lawn it stands on.
+export const std = (color: number, rough = 0.8) => shaded(new THREE.MeshStandardMaterial({ color, roughness: rough }), 'creature')
 
 export function part(geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, sx = 1, sy = 1, sz = 1) {
   const m = new THREE.Mesh(geo, mat)

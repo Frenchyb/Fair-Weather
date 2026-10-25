@@ -11,7 +11,7 @@
  * late morning, so two rounds' pictures differ only by what the round changed.
  */
 import { chromium } from 'playwright'
-import { mkdirSync } from 'node:fs'
+import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 const MARKS = {
@@ -23,6 +23,8 @@ const MARKS = {
   oak: { focus: [12, 4], zoom: 1, time: 72 },
   dusk: { focus: [-2, 1], zoom: 1, time: 160 },
   rain: { focus: [-2, 1], zoom: 1, time: 72, key: 'Digit3' },
+  // Last: V switches to the greyscale debug view, which stays on.
+  grey: { focus: [-2, 1], zoom: 1, time: 72, key: 'KeyV' },
 }
 
 const [url, out, w = '1280', h = '800', dpr = '2', pick] = process.argv.slice(2)
@@ -55,7 +57,13 @@ for (const name of pick ? pick.split(',') : Object.keys(MARKS)) {
   await later(4)
   const file = join(out, `${name}-${w}x${h}.png`)
   await page.screenshot({ path: file, timeout: 600000 })
-  console.log(file)
+  // The frame's cost goes under every shot: a change that costs more is kept only on purpose.
+  const cost = await page.evaluate(() => {
+    const i = window.fairWeather.view.renderer.info.render
+    return { calls: i.calls, triangles: i.triangles }
+  })
+  appendFileSync(join(out, 'counts.md'), `| ${name} | ${w}x${h} | ${cost.calls} | ${cost.triangles.toLocaleString('en')} |\n`)
+  console.log(file, cost.calls, 'calls', cost.triangles, 'triangles')
   if (m.key) await page.keyboard.press('Digit0')
 }
 if (errors.length) console.log('page errors:', errors.slice(0, 5).join(' | '))

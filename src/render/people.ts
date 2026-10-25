@@ -7,6 +7,7 @@
  * carry. Reads the garden only.
  */
 import * as THREE from 'three'
+import { shaded } from './shade'
 import { weld } from './batch'
 import type { Garden } from '../sim/garden'
 import { washSpot, type Carry, type Emote, type Person } from '../sim/people'
@@ -342,7 +343,7 @@ export class PeopleView {
       const geo = new THREE.PlaneGeometry(w, hgt, 6, 6)
       geo.translate(0, -hgt / 2, 0)
       const dry = new THREE.Color(colours[i % colours.length])
-      const mat = new THREE.MeshStandardMaterial({ color: dry.clone(), roughness: 0.95, side: THREE.DoubleSide })
+      const mat = shaded(new THREE.MeshStandardMaterial({ color: dry.clone(), roughness: 0.95, side: THREE.DoubleSide }), 'creature')
       const mesh = new THREE.Mesh(geo, mat)
       mesh.position.set(s.x, W.height, s.z)
       mesh.castShadow = true

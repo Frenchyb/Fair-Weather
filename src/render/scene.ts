@@ -23,13 +23,13 @@ import { Effects } from './effects'
 import { GroundView } from './ground'
 import { Horizon } from './horizon'
 import { needIcons } from './icons'
-import { loadSkyLight, surfaces } from './textures'
+import { surfaces } from './textures'
 import { PlantView } from './plants'
 import { GradePass, blendGrade, grade, type Grade } from './grade'
-import { fieldUniforms, meadowUniforms, seasonUniforms, shadeUniforms } from './shade'
+import { fieldUniforms, meadowUniforms, seasonUniforms, shadeUniforms, shaded } from './shade'
 import { WEATHERS } from '../sim/climate'
 import { WindView } from './wind'
-import { World, lambert, metricUV, surface } from './world'
+import { World, lambert, metricUV, rounded, surface } from './world'
 
 // Tints over the photographed soil: pale when dry, dark when wet.
 const DRY = new THREE.Color(0xf4e6d2)
@@ -97,6 +97,16 @@ export class GardenScene {
   private plain: RenderPass
   private bloom: UnrealBloomPass
   private gradePass = new GradePass()
+  /**
+   * Debug views (V): what the picture is made of, to read numbers off rather
+   * than tune by eye. Greyscale checks that the subject reads in values alone;
+   * clay shows light and shadow without colour; normals show which way every
+   * surface faces.
+   */
+  static readonly VIEWS = ['normal', 'greyscale', 'clay', 'normals'] as const
+  view: (typeof GardenScene.VIEWS)[number] = 'normal'
+  private clay = new THREE.MeshStandardMaterial({ color: 0xbbbbbb, roughness: 0.9 })
+  private normals = new THREE.MeshNormalMaterial()
   private graded = grade()
   private want = grade()
   private pixelRatio: number
@@ -134,7 +144,7 @@ export class GardenScene {
     this.renderer.setPixelRatio(this.pixelRatio)
     // Count every pass of a frame, not just the last, for the performance overlay.
     this.renderer.info.autoReset = false
-    this.renderer.toneMapping = THREE.AgXToneMapping
+    this.renderer.toneMapping = THREE.NeutralToneMapping
     this.renderer.toneMappingExposure = T.look.exposure
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
@@ -148,8 +158,8 @@ export class GardenScene {
     this.sun.shadow.normalBias = 0.04
     this.sun.shadow.radius = 3
     s.add(this.horizon.root, this.world.root)
+    // Sky light is generated from a painted dome: no download, and it matches the sky we draw.
     s.environment = this.skyLight()
-    loadSkyLight(this.renderer, (env) => (s.environment = env))
 
     this.buildBed()
     // Grass stops at the stepping stones and at each mulch ring's soft edge.
@@ -204,8 +214,8 @@ export class GardenScene {
       this.bees.push({ mesh: m, local: new THREE.Matrix4().compose(new THREE.Vector3(0, y, 0), new THREE.Quaternion(), new THREE.Vector3(sx, sy, sz)) })
       s.add(m)
     }
-    part(new THREE.MeshStandardMaterial({ color: 0xe6b422 }), 1, 1, 1.3)
-    part(new THREE.MeshStandardMaterial({ color: 0x2a2018 }), 1.05, 1.05, 0.35)
+    part(shaded(new THREE.MeshStandardMaterial({ color: 0xe6b422 }), 'creature'), 1, 1, 1.3)
+    part(shaded(new THREE.MeshStandardMaterial({ color: 0x2a2018 }), 'creature'), 1.05, 1.05, 0.35)
     part(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 }), 1.6, 0.15, 0.6, 0.04)
 
     // Ambient occlusion and a touch of bloom, then tone mapping.
@@ -266,7 +276,7 @@ export class GardenScene {
       [wall, depth, (width - wall) / 2, 0],
     ]
     for (const [w, d, x, z] of sides) {
-      const b = new THREE.Mesh(metricUV(new THREE.BoxGeometry(w, height + 0.06, d)), wood)
+      const b = new THREE.Mesh(metricUV(rounded(w, height + 0.06, d)), wood)
       b.position.set(x, (height + 0.06) / 2, z)
       b.castShadow = b.receiveShadow = true
       this.scene.add(b)
@@ -441,6 +451,8 @@ export class GardenScene {
     this.effects.update(garden, this.camera, dt)
     this.updateBees(garden)
     this.adapt(wall)
+    this.scene.overrideMaterial = this.view === 'clay' ? this.clay : this.view === 'normals' ? this.normals : null
+    this.gradePass.uniforms.uGrey.value = this.view === 'greyscale' || this.view === 'clay' ? 1 : 0
     this.composer.render(dt)
   }
 
