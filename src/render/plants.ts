@@ -418,7 +418,7 @@ export class PlantView {
     ]
     // A short trunk forking into boughs, one up into each lump of the crown.
     this.body.add(mesh(trunk(crown, 1.4, 0.15, 11), bark))
-    this.green.add(canopy(crown, { length: 1, width: 0.5, widest: 0.45, fold: 0.3, curl: 0.2 }, 0.16, T.render.canopy.sprays * 2.2, T.render.canopy.core, 11), 0, 0, 0)
+    this.green.add(canopy(crown, { length: 1, width: 0.42, widest: 0.5, fold: 0.25, curl: 0.15 }, 0.16, T.render.canopy.sprays * 2.2, T.render.canopy.core, 11), 0, 0, 0)
     // Blossom first, then apples that redden as they ripen.
     const blossom = sheet(0xf7d7e0, 0.6)
     this.fruitMat = shaded(new THREE.MeshStandardMaterial({ color: 0x8fb83a, roughness: 0.35 }))

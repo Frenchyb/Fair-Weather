@@ -65,7 +65,7 @@ function tuft() {
 }
 
 /** Where grass may grow: everywhere on the lawn but the bed, the pond and the paving. One byte per 10 cm. */
-function grassMask() {
+function grassMask(clear: [number, number, number][]) {
   const y = T.yard
   const x0 = y.x0 - 1
   const z0 = y.z0 - 0.5
@@ -82,7 +82,8 @@ function grassMask() {
       const inBed = Math.abs(x) < T.bed.width / 2 + 0.15 && Math.abs(z) < T.bed.depth / 2 + 0.15
       const inPond = Math.hypot(x - T.pond.x, z - T.pond.z) < T.pond.radius + 0.25
       const hard = T.hardGround.some((h) => x > h.x0 - 0.1 && x < h.x1 + 0.1 && z > h.z0 - 0.1 && z < h.z1 + 0.1)
-      data[j * cols + i] = inBed || inPond || hard ? 0 : 255
+      const mown = clear.some(([cx, cz, cr]) => (x - cx) ** 2 + (z - cz) ** 2 < cr * cr)
+      data[j * cols + i] = inBed || inPond || hard || mown ? 0 : 255
     }
   }
   const tex = new THREE.DataTexture(data, cols, rows, THREE.RedFormat, THREE.UnsignedByteType)
@@ -105,7 +106,8 @@ export class GroundView {
   private bankClock = 0
   private m = new THREE.Matrix4()
 
-  constructor(scene: THREE.Scene, garden: Garden, lite = false) {
+  /** `clear` lists places the grass leaves bare, as (x, z, radius). */
+  constructor(scene: THREE.Scene, garden: Garden, lite = false, clear: [number, number, number][] = []) {
     const g = garden.ground
     this.data = new Uint8Array(g.cols * g.rows * 4)
     this.tex = new THREE.DataTexture(this.data, g.cols, g.rows, THREE.RGBAFormat)
@@ -137,7 +139,7 @@ export class GroundView {
     // Grass: meadow tufts laid out round the camera's focus by the shader.
     const M = T.render.meadow
     const side = lite ? M.tuftsLite : M.tufts
-    const mask = grassMask()
+    const mask = grassMask(clear)
     meadowUniforms.uG.value = side
     meadowUniforms.uCell.value = lite ? M.cellLite : M.cell
     meadowUniforms.uReach.value = side * meadowUniforms.uCell.value * 0.47

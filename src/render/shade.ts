@@ -216,10 +216,15 @@ export function shaded<M extends THREE.Material>(material: M, fx: GroundFx = 'pl
         vLaid = length(bend);
         // The air: a gust field crossing the garden, plus a flutter that never stops.
         float g = fwGustAt(rootXZ);
-        vGust = g;
-        float k = (0.12 + 1.1 * uAir) * (0.25 + g) + 0.08 * sin(uTime * (2.0 + 2.0 * uAir) + rootXZ.x * 0.6 + rootXZ.y * 0.4);
+        // Grass leans loosely with the air, each patch its own way so the lawn never
+        // looks combed; a passing gust band lays it right over downwind.
+        float band = smoothstep(0.45, 0.85, g);
+        vGust = band;
+        float k = (0.12 + 1.1 * uAir) * (0.35 + 1.0 * band) + 0.08 * uAir * sin(uTime * (2.0 + 2.0 * uAir) + rootXZ.x * 0.6 + rootXZ.y * 0.4);
+        float turn = (fwNoise(rootXZ * 0.25 + 11.0) - 0.5) * 1.8 * (1.0 - band) + (r3 - 0.5) * 0.9;
+        vec2 airDir = mat2(cos(turn), sin(turn), -sin(turn), cos(turn)) * uAirDir;
         float sway = sin(uTime * 1.7 + rootXZ.x * 0.45 + rootXZ.y * 0.3) * (0.05 + 0.25 * uGust);
-        vec2 lean = bend * 0.22 + uAirDir * k * 0.35 + uWind * (sway + 0.12 * uGust);
+        vec2 lean = bend * 0.22 + airDir * k * 0.35 + uWind * (sway + 0.12 * uGust);
         transformed.xz += lean * h * tall;
         transformed.y -= (vLaid * 0.12 + dot(lean, lean) * 0.35) * h * tall;
         transformed.xz += rootXZ;`,

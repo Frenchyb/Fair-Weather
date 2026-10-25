@@ -152,7 +152,12 @@ export class GardenScene {
     loadSkyLight(this.renderer, (env) => (s.environment = env))
 
     this.buildBed()
-    this.ground = new GroundView(s, garden, lite)
+    // Grass stops at the stepping stones and at each mulch ring's soft edge.
+    const clear = [
+      ...this.world.clearings,
+      ...garden.plants.filter((p) => !p.inBed).map((p): [number, number, number] => [p.x, p.z, (T.kinds[p.kind].reach ?? 0.5) * 0.6]),
+    ]
+    this.ground = new GroundView(s, garden, lite, clear)
     this.cloud = new CloudView(s)
     this.drift = new DriftView(s)
     this.precip = new Precip(s)

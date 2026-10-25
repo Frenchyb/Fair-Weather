@@ -121,6 +121,9 @@ const MOUTH = { x: H.burrow.x - 0.55, z: H.burrow.z }
 const BACK_RAIL = T.yard.z0 - 0.5
 const SPAWN_AT = { x: T.pond.x + 0.9, z: T.pond.z + 0.7 }
 
+// The squirrels' drey sits in the oak's fork, below the crown's leaves, so they stay in sight.
+const DREY_Y = 2.3
+
 export class WildlifeView {
   /** Sounds the audio might want: 'thump', 'snort', 'chatter', 'snuffle', 'cheep', 'flutter', 'honk', 'quack'. */
   readonly events: string[] = []
@@ -197,7 +200,7 @@ export class WildlifeView {
     bed.position.set(H.deerBed.x, 0.03, H.deerBed.z)
     scene.add(bed)
     const drey = C.drey()
-    drey.position.set(H.drey.x + 0.5, 3.0, H.drey.z - 0.4)
+    drey.position.set(H.drey.x + 0.5, DREY_Y, H.drey.z - 0.4)
     scene.add(drey)
     const carrot = new THREE.ConeGeometry(0.03, 0.18, 6)
     carrot.rotateZ(Math.PI / 2)
@@ -733,7 +736,7 @@ export class WildlifeView {
   private squirrelsUpdate(garden: Garden, dt: number, t: number) {
     const q = garden.habitat.squirrels
     const base = { x: H.drey.x, z: H.drey.z }
-    const dreyY = 3.0
+    const dreyY = DREY_Y
     this.changed('squirrels', q.mode)
     this.squirrels.forEach((c, i) => {
       const hide = q.mode === 'shelter'

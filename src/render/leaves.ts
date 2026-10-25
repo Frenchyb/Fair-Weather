@@ -259,8 +259,12 @@ export function canopy(lumps: Lump[], shape: LeafShape, size: number, density: n
   // A spray: leaves fanned round a point, lying in a cup facing +y.
   const sprays = [0, 1, 2].map((k) => {
     const sb = new Bundle()
-    const n = 5 + k
-    for (let i = 0; i < n; i++) sb.add(leaf(shape, detail[0], detail[1]), 0, 0, 0, (i / n) * Math.PI * 2 + k, 0.25 + ((i * 7) % 3) * 0.12, 0, 1)
+    // Three to five leaves at uneven angles and lengths, so a spray reads as a twig, not a star.
+    const n = 3 + k
+    for (let i = 0; i < n; i++) {
+      const yaw = (i / n) * Math.PI * 2 + k + (r() - 0.5) * 1.1
+      sb.add(leaf(shape, detail[0], detail[1]), (r() - 0.5) * 0.3, (r() - 0.5) * 0.15, (r() - 0.5) * 0.3, yaw, 0.15 + r() * 0.5, (r() - 0.5) * 0.8, 0.75 + r() * 0.5)
+    }
     return sb.build()
   })
 

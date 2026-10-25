@@ -279,6 +279,10 @@
         #journal:not(.closed) {
           width: 240px;
         }
+        #journal,
+        #count {
+          font-size: 12px;
+        }
         #storm {
           left: calc(10px + var(--sl));
           bottom: calc(10px + var(--sb));
@@ -300,6 +304,12 @@
         #sky:not(.open) .label,
         #sky:not(.open) button:not(.now) {
           display: none;
+        }
+        #sky:not(.open)::after {
+          content: '\25BE';
+          align-self: center;
+          opacity: 0.55;
+          padding-right: 4px;
         }
         #sky:not(.open) button.now {
           background: transparent;

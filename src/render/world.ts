@@ -147,6 +147,8 @@ export class World {
   private oakLeaves: THREE.MeshStandardMaterial[] = []
   /** Deciduous crowns: bare in winter, so they stop casting full shadows. */
   private crowns: THREE.Mesh[] = []
+  /** Places the meadow grass leaves bare: each stepping stone, as (x, z, radius). */
+  readonly clearings: [number, number, number][] = []
   private water!: THREE.MeshStandardMaterial
   private lilies: THREE.Mesh[] = []
   private r = rng(7)
@@ -249,7 +251,7 @@ export class World {
     run(y.x1 + 0.5, back, y.x1 + 0.5, y.z1 + 2)
 
     // A hedge of round shrubs outside the fence, and trees beyond it.
-    const crown = foliage(3)
+    const crown = canopy([[0, 0, 0, 1]], { length: 1, width: 0.5, widest: 0.45, fold: 0.3, curl: 0.2 }, 0.22, T.render.canopy.sprays, 0.86, 3, [3, 1])
     const shrub = (x: number, z: number, s: number) => {
       const mat = leaves(new THREE.Color().setHSL(0.25 + r() * 0.05, 0.4, 0.27 + r() * 0.08), true)
       const m = new THREE.Mesh(crown, mat)
@@ -380,7 +382,7 @@ export class World {
     }
 
     // Foundation planting: boxwood balls and a strip of flowers along the house.
-    const ball = foliage(5).scale(0.45, 0.45, 0.45)
+    const ball = canopy([[0, 0, 0, 1]], { length: 1, width: 0.4, widest: 0.5, fold: 0.2, curl: 0.1 }, 0.16, T.render.canopy.sprays * 1.6, 0.88, 5, [3, 1]).scale(0.45, 0.45, 0.45)
     const boxwood = leaves(new THREE.Color(0x3f6b32), true)
     for (const x of [hx0 + 0.6, hx0 + 1.6, hx1 - 0.6, hx1 - 1.6]) {
       const b = new THREE.Mesh(ball, boxwood)
@@ -444,6 +446,7 @@ export class World {
           s.scale.set(0.9 + r() * 0.3, 1, 0.8 + r() * 0.3)
           s.rotation.y = r() * 3
           add(this.root, s, false)
+          this.clearings.push([s.position.x, s.position.z, 0.36 * Math.max(s.scale.x, s.scale.z)])
         }
       }
     }

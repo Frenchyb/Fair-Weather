@@ -35,6 +35,8 @@ const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=sw
 const page = await browser.newPage({ viewport: { width: +w, height: +h }, deviceScaleFactor: +dpr })
 const errors = []
 page.on('pageerror', (e) => errors.push(String(e)))
+// A shader that fails to compile only logs to the console, and the thing it draws just vanishes.
+page.on('console', (m) => m.type() === 'error' && errors.push(m.text().slice(0, 300)))
 await page.goto(url)
 await page.waitForFunction(() => window.fairWeather?.garden.time > 1, null, { timeout: 300000 })
 const later = (s) => page.evaluate((s) => window.fairWeather.garden.time + s, s).then((t) =>
