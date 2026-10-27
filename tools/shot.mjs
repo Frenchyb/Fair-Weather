@@ -23,6 +23,14 @@ const MARKS = {
   oak: { focus: [12, 4], zoom: 1, time: 72 },
   dusk: { focus: [-2, 1], zoom: 1, time: 160 },
   rain: { focus: [-2, 1], zoom: 1, time: 72, key: 'Digit3' },
+  // The first frame a new player sees: no forced growth or green, nothing set up.
+  fresh: { focus: [-2, 1], zoom: 1, fresh: true },
+  // The core action: the cloud raining on a plant in the bed, seen close.
+  shower: { focus: [0, -1], zoom: 0.45, time: 72, act: 'shower' },
+  // A storm let go on a rainy day.
+  storm: { focus: [-2, 1], zoom: 1, time: 72, key: 'Digit3', act: 'storm' },
+  // Whoever is outdoors, seen as close as the camera goes.
+  people: { focus: [-2, 1], zoom: 0.3, time: 72, act: 'people' },
   // Last: V switches to the greyscale debug view, which stays on.
   grey: { focus: [-2, 1], zoom: 1, time: 72, key: 'KeyV' },
 }
@@ -47,14 +55,33 @@ for (const name of pick ? pick.split(',') : Object.keys(MARKS)) {
   const m = MARKS[name]
   if (m.key) await page.keyboard.press(m.key)
   await page.evaluate((m) => {
-    const { garden, view } = window.fairWeather
-    garden.time = m.time
-    for (const p of garden.plants) p.growth = 1
-    for (let k = 0; k < garden.ground.green.length; k++) garden.ground.green[k] = 0.9
+    const { garden, view, input } = window.fairWeather
+    if (!m.fresh) {
+      garden.time = m.time
+      for (const p of garden.plants) p.growth = 1
+      for (let k = 0; k < garden.ground.green.length; k++) garden.ground.green[k] = 0.9
+    }
     view.focus.set(m.focus[0], m.focus[1])
     view.zoomBy(m.zoom / view.zoom)
+    input.pointer = null
+    if (m.act === 'shower') {
+      const p = garden.plants.find((p) => p.inBed && p.kind === 'lavender') ?? garden.plants[0]
+      garden.cloud.x = p.x
+      garden.cloud.z = p.z
+      garden.cloud.water = garden.cloud.capacity
+      input.rainKey = true
+      view.focus.set(p.x, p.z + 1)
+    }
+    if (m.act === 'storm') {
+      garden.storm.charge = 1
+      input.stormAsked = true
+    }
+    if (m.act === 'people') {
+      const p = garden.people.all.find((p) => !p.inside) ?? garden.people.walter
+      view.focus.set(p.x, p.z)
+    }
   }, m)
-  await later(4)
+  await later(m.act === 'storm' ? 6 : 4)
   const file = join(out, `${name}-${w}x${h}.png`)
   await page.screenshot({ path: file, timeout: 600000 })
   // The frame's cost goes under every shot: a change that costs more is kept only on purpose.
@@ -65,6 +92,7 @@ for (const name of pick ? pick.split(',') : Object.keys(MARKS)) {
   appendFileSync(join(out, 'counts.md'), `| ${name} | ${w}x${h} | ${cost.calls} | ${cost.triangles.toLocaleString('en')} |\n`)
   console.log(file, cost.calls, 'calls', cost.triangles, 'triangles')
   if (m.key) await page.keyboard.press('Digit0')
+  if (m.act === 'shower') await page.evaluate(() => (window.fairWeather.input.rainKey = false))
 }
 if (errors.length) console.log('page errors:', errors.slice(0, 5).join(' | '))
 await browser.close()

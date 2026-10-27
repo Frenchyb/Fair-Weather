@@ -56,7 +56,8 @@
       #hint {
         left: calc(16px + var(--sl));
         top: 16px;
-        max-width: 300px;
+        max-width: 270px;
+        font-size: 13.5px;
         transition: opacity 1.2s;
       }
       #hint b {
@@ -66,10 +67,51 @@
       #count {
         right: calc(16px + var(--sr));
         top: 16px;
+        font-size: 13px;
+        padding: 5px 12px;
+        display: flex;
+        gap: 14px;
+        align-items: center;
+      }
+      /* A small labelled meter: the label, a bar, the number. */
+      .meter,
+      .gauge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .meter i,
+      .gauge i {
+        font-style: italic;
+        opacity: 0.7;
+      }
+      .meter b,
+      .gauge b {
+        display: inline-block;
+        width: 54px;
+        height: 5px;
+        border-radius: 3px;
+        background: rgba(38, 48, 31, 0.14);
+        overflow: hidden;
+      }
+      .meter em,
+      .gauge em {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: #5d8f3c;
+        border-radius: 3px;
+        transition: width 0.6s;
+      }
+      #water-bar {
+        background: #6f93b4;
+      }
+      #storm-bar {
+        background: #6b7c8f;
       }
       #journal {
         right: calc(16px + var(--sr));
-        top: 62px;
+        top: 54px;
         width: 290px;
         pointer-events: auto;
         font-size: 14px;
@@ -119,40 +161,37 @@
       #journal.closed ul {
         display: none;
       }
+      /* Sits just over the plant it is about (placed from main.ts). */
       #tip {
         left: 50%;
-        bottom: calc(18px + var(--sb));
-        transform: translateX(-50%);
+        top: 50%;
+        transform: translate(-50%, -100%);
         opacity: 0;
         transition: opacity 0.25s;
         white-space: nowrap;
+        font-size: 13.5px;
       }
-      #storm {
+      #gauges {
         left: calc(16px + var(--sl));
         bottom: calc(18px + var(--sb));
-        font-size: 13px;
-        letter-spacing: 0.04em;
-        padding: 6px 12px 9px;
-        min-width: 120px;
-        opacity: 0.8;
-        transition: opacity 0.6s, background 0.6s;
+        font-size: 12.5px;
+        padding: 6px 12px;
+        display: grid;
+        gap: 3px;
+        transition: background 0.6s, color 0.6s;
       }
-      #storm::after {
-        content: '';
-        position: absolute;
-        left: 12px;
-        right: 12px;
-        bottom: 5px;
-        height: 2px;
-        border-radius: 1px;
-        background: linear-gradient(90deg, #6b7c8f calc(var(--charge, 0) * 100%), rgba(38, 48, 31, 0.12) 0);
+      .gauge i {
+        width: 40px;
       }
-      #storm.ready {
-        opacity: 1;
+      #storm-note {
+        font-size: 11.5px;
+        opacity: 0.75;
+        font-style: italic;
+      }
+      #gauges.ready {
         background: rgba(232, 238, 248, 0.9);
       }
-      #storm.on {
-        opacity: 1;
+      #gauges.on {
         background: rgba(70, 80, 95, 0.85);
         color: #eef2f6;
       }
@@ -189,6 +228,22 @@
         gap: 5px;
         font-size: 13px;
         padding: 8px 10px;
+      }
+      /* Folded to today's weather and season until the pointer is over it. */
+      #sky:not(:hover):not(.open) {
+        grid-auto-flow: column;
+        gap: 10px;
+      }
+      #sky:not(:hover):not(.open) button:not(.now),
+      #sky:not(:hover):not(.open) kbd {
+        display: none;
+      }
+      #sky:not(:hover):not(.open) button.now {
+        background: transparent;
+        border-color: transparent;
+        color: inherit;
+        box-shadow: none;
+        padding: 0 2px;
       }
       #sky .row {
         display: flex;
@@ -248,9 +303,8 @@
         }
         #tip {
           white-space: normal;
-          width: calc(100vw - 64px);
+          max-width: calc(100vw - 64px);
           text-align: center;
-          bottom: 120px;
         }
         #sky kbd {
           display: none;
@@ -283,11 +337,13 @@
         #count {
           font-size: 12px;
         }
-        #storm {
+        #gauges {
           left: calc(10px + var(--sl));
           bottom: calc(10px + var(--sb));
-          min-width: 0;
-          padding: 4px 10px 7px;
+          padding: 4px 10px;
+        }
+        #storm-note {
+          display: none;
         }
         #sky {
           right: calc(10px + var(--sr));
@@ -322,9 +378,6 @@
           min-height: 34px;
           padding: 2px 11px;
         }
-        #tip {
-          bottom: 56px;
-        }
       }
       #portrait {
         display: none;
@@ -344,15 +397,16 @@
   <body>
     <canvas id="view"></canvas>
     <div id="hint" class="card">
-      You are the weather over this garden.<br />
-      <b>Move</b> to steer the cloud. <b>Hold the mouse button</b> (or space) to rain.
-      <b>X</b> and <b>Z</b> spread it wide or gather it in. Rest it over the pond to
-      fill it up. <b>WASD</b> or the screen's edge look around, <b>Q</b> and <b>E</b>
-      turn the view, and <b>scroll</b> zooms. Set the day's weather and the season
-      bottom right, or leave them on Auto and watch the year go round. The journal
-      on the right has more to try.
+      You are the weather over this garden. <b>Move</b> to steer the cloud and
+      <b>hold the mouse</b> (or Space) to rain. Rest it over the pond to refill.
+      <b>X</b>/<b>Z</b> spread or gather it; <b>WASD</b>, <b>Q</b>/<b>E</b> and
+      <b>scroll</b> move the view.
     </div>
-    <div id="count" class="card"></div>
+    <div id="count" class="card">
+      <span id="when"></span>
+      <span class="meter" title="Share of the lawn that is properly green"><i>Lawn</i><b><em id="lawn-bar"></em></b><span id="lawn-pc"></span></span>
+      <span class="meter" title="Plants in full bloom"><i>Blooms</i><span id="blooms"></span></span>
+    </div>
     <div id="perf" class="card"></div>
     <div id="journal" class="card">
       <div id="journal-head">Journal <span>(J)</span></div>
@@ -360,7 +414,11 @@
     </div>
     <div id="tip" class="card"></div>
     <div id="toast" class="card"></div>
-    <div id="storm" class="card"></div>
+    <div id="gauges" class="card">
+      <div class="gauge" title="How much rain the cloud holds; rest it over the pond to refill"><i>Cloud</i><b><em id="water-bar"></em></b><span id="water-pc"></span></div>
+      <div class="gauge" id="storm" title="The storm charges as the lawn greens and plants bloom"><i>Storm</i><b><em id="storm-bar"></em></b><span id="storm-pc"></span></div>
+      <div id="storm-note"></div>
+    </div>
     <div id="sky" class="card">
       <div class="row" id="weather-row"><span class="label">Weather</span></div>
       <div class="row" id="season-row"><span class="label">Season</span></div>

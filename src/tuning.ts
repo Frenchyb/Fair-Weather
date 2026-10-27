@@ -203,9 +203,9 @@ export const T = {
   ground: {
     /** Grid cell size, metres. */
     cell: 0.5,
-    /** The lawn starts parched and patchy. */
-    startGreen: 0.14,
-    greenNoise: 0.16,
+    /** The lawn starts patchy: mostly green, tired in places, so the first frame is a garden and rain still has work to do. */
+    startGreen: 0.55,
+    greenNoise: 0.25,
     /** Green added per second under the middle of a reference-sized shower. */
     greenRate: 0.4,
     /** Green grass creeps into drier neighbours: fraction of the gap per second. */
@@ -483,6 +483,12 @@ export const T = {
    */
   look: {
     exposure: 1.35,
+    /** Exposure taken off on a grey day, more again when it rains, and the share a storm takes off on top. */
+    greyDim: 0.2,
+    rainDim: 0.25,
+    stormDim: 0.3,
+    /** Exposure added at the height of a lightning flash. */
+    flashExposure: 1.2,
     sun: 4.2,
     /** Sky fill from the hemisphere light and the sky's own reflections, at noon. */
     fill: 0.38,
@@ -495,14 +501,17 @@ export const T = {
     grades: {
       clear: { saturation: 0.50, contrast: 0.3, high: [1.0, 0.97, 0.9], low: [0.01, 0.035, 0.07], vignette: 0.3 },
       overcast: { saturation: 0.45, contrast: 0.16, high: [0.97, 0.98, 1.0], low: [0.03, 0.045, 0.06], vignette: 0.32 },
-      rain: { saturation: 0.41, contrast: 0.2, high: [0.93, 0.96, 1.0], low: [0.02, 0.04, 0.06], vignette: 0.38 },
+      rain: { saturation: 0.36, contrast: 0.22, high: [0.88, 0.94, 1.0], low: [0.01, 0.035, 0.07], vignette: 0.4 },
       fog: { saturation: 0.38, contrast: 0.04, high: [0.98, 0.98, 0.97], low: [0.08, 0.09, 0.1], vignette: 0.24 },
       snow: { saturation: 0.43, contrast: 0.14, high: [0.97, 0.98, 1.0], low: [0.02, 0.04, 0.08], vignette: 0.28 },
       dusk: { saturation: 0.56, contrast: 0.22, high: [1.0, 0.88, 0.72], low: [0.05, 0.02, 0.07], vignette: 0.36 },
       night: { saturation: 0.38, contrast: 0.18, high: [0.85, 0.9, 1.0], low: [0.0, 0.015, 0.05], vignette: 0.5 },
-      storm: { saturation: 0.34, contrast: 0.26, high: [0.9, 0.94, 1.0], low: [0.0, 0.01, 0.02], vignette: 0.5 },
+      storm: { saturation: 0.24, contrast: 0.3, high: [0.8, 0.88, 1.0], low: [0.0, 0.015, 0.05], vignette: 0.55 },
     },
   },
+
+  /** The instructions card fades after this many seconds on screen, or seconds of rain. */
+  hud: { hintFor: 15, hintAfterRain: 3 },
 
   /** The performance budget the overlay (P) checks against: what a phone held sideways should manage. */
   perf: { fps: 30, drawCalls: 100, triangles: 500000 },
@@ -510,8 +519,13 @@ export const T = {
   render: {
     /** How dark the cloud's shade looks, as a brightness multiplier. */
     shadeDarkness: 0.55,
-    rainDrops: 3000,
+    rainDrops: 6000,
     rainSpeed: 16,
+    /** Drops a second from the player's shower, and from a storm at full strength. */
+    showerRain: 900,
+    stormRain: 5200,
+    /** Where drops land: a few droplets thrown up, how big (metres), for how long (seconds). */
+    splash: { pool: 2400, droplets: 3, size: 0.07, life: 0.28 },
     /**
      * Meadow grass, after the island proof: tufts laid out on a grid round the
      * camera's focus in the vertex shader (cell in metres, tufts a side), fading
@@ -523,7 +537,7 @@ export const T = {
      * whole garden. Strength 0 calm to 1 gale, per weather; gust size in metres
      * and speed in metres a second.
      */
-    air: { clear: 0.3, overcast: 0.45, rain: 0.6, fog: 0.08, snow: 0.35, size: 9, speed: 3.5 },
+    air: { clear: 0.3, overcast: 0.45, rain: 0.6, fog: 0.08, snow: 0.35, size: 9, speed: 3.5, charge: 0.25 },
     fogBanks: 40,
     /** Seconds a fog bank lingers after it settles. */
     fogLingers: 60,
@@ -531,6 +545,8 @@ export const T = {
     precip: { rain: 2500, rainRate: 2200, snow: 3500, snowRate: 900, cloudSnowRate: 500, leaves: 220, leafRate: 14, reach: 22, height: 18 },
     /** Drifting clouds overhead, and how many puffs each. */
     skyPuffs: 9,
+    /** Rose's and Walter's heads, drawn a little larger than life so their faces read. */
+    headSize: 1.15,
     /** Visitors drawn larger than life, so they read from the usual height. */
     critterSize: { bird: 2.2, rabbit: 1.5, frog: 2, duck: 1.4 },
     beesPerPlant: 2,

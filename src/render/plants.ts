@@ -62,8 +62,8 @@ class Slot {
   }
 }
 
-/** Full-grown height of each plant, for placing its thought bubble. */
-const HEIGHT: Record<KindName, number> = {
+/** Full-grown height of each plant, for placing its thought bubble and where rain splashes off its leaves. */
+export const HEIGHT: Record<KindName, number> = {
   tomato: 1.15,
   lettuce: 0.4,
   lavender: 0.85,

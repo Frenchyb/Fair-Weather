@@ -2,6 +2,7 @@ import { Sound } from './audio'
 import { Input, SEASON_KEYS, WEATHER_KEYS } from './input'
 import { SEASONS, WEATHERS, type Season, type WeatherKind } from './sim/climate'
 import { GardenScene } from './render/scene'
+import { HEIGHT as PLANT_TOP } from './render/plants'
 import { Garden, type StrikeRefusal } from './sim/garden'
 import { WISHES } from './sim/journal'
 import { dayProgress } from './sim/sky'
@@ -16,7 +17,12 @@ const toast = document.getElementById('toast')!
 const journal = document.getElementById('journal')!
 const wishList = document.getElementById('wishes')!
 const journalHead = document.getElementById('journal-head')!
-const stormBadge = document.getElementById('storm')!
+const gauges = document.getElementById('gauges')!
+const el = (id: string) => document.getElementById(id)!
+const [when, lawnBar, lawnPc, bloomsEl, waterBar, waterPc, stormBar, stormPc, stormNote] = [
+  'when', 'lawn-bar', 'lawn-pc', 'blooms', 'water-bar', 'water-pc', 'storm-bar', 'storm-pc', 'storm-note',
+].map(el)
+const pc = (v: number) => `${Math.round(Math.min(1, Math.max(0, v)) * 100)}%`
 const weatherRow = document.getElementById('weather-row')!
 const seasonRow = document.getElementById('season-row')!
 
@@ -47,7 +53,7 @@ let journalTimer = 0
 const REFUSED: Record<StrikeRefusal, string> = {
   'too-little-water': 'Lightning needs a fuller cloud. Rest it over the pond first.',
   'too-spread': 'Gather the cloud in tight first: press Z.',
-  'too-soon': '',
+  'too-soon': 'The lightning is still building after the last strike. Try again in a moment.',
 }
 
 const sound = new Sound()
@@ -237,6 +243,7 @@ view.resize()
 
 let last = performance.now()
 let hintShown = 0
+let hintClock = 0
 let lastTip = ''
 
 const FEELING = {
@@ -317,23 +324,32 @@ function frame(now: number) {
   shownWeather = cl.weather
   showSky()
 
+  // Every number on screen has its label, and the storm says what to do next.
   const st = garden.storm
-  stormBadge.classList.toggle('on', garden.storming)
-  stormBadge.classList.toggle('ready', !garden.storming && st.charge >= 1)
-  stormBadge.style.setProperty('--charge', String(garden.storming ? 1 : st.charge))
-  stormBadge.textContent = garden.storming ? 'Storm' : st.charge >= 1 ? 'Storm ready: G' : 'Storm gathering'
+  const ready = !garden.storming && st.charge >= 1
+  gauges.classList.toggle('on', garden.storming)
+  gauges.classList.toggle('ready', ready)
+  waterBar.style.width = waterPc.textContent = pc(c.water / c.capacity)
+  stormBar.style.width = stormPc.textContent = pc(garden.storming ? 1 : st.charge)
+  stormNote.textContent = garden.storming
+    ? 'Storm! Steer it round with the cloud.'
+    : ready
+      ? 'Storm ready: press G to let it go.'
+      : 'Charges as the lawn greens and plants bloom.'
 
   const wild = garden.wildflowers.length
   const night = garden.daylight < 0.5 ? 'night' : 'day'
-  count.textContent =
-    `${NAMES[cl.season]}, ${night}. ${garden.bloomed} of ${garden.plants.length} in bloom, lawn ${Math.round(garden.ground.greenShare * 100)}% green` +
-    (wild ? `, ${wild} wildflowers` : '')
+  when.textContent = `${NAMES[cl.season]}, ${night}`
+  lawnBar.style.width = lawnPc.textContent = pc(garden.ground.greenShare)
+  bloomsEl.textContent = `${garden.bloomed} of ${garden.plants.length}` + (wild ? `, ${wild} wild` : '')
 
-  // The instructions step aside once the player has rained for a while.
+  // The instructions step aside once the player has rained a little, or after a short while.
   if (garden.cloud.raining) hintShown += dt
-  if (hintShown > 6 || garden.time > 40) hint.style.opacity = '0'
+  hintClock += wall
+  if (hintShown > T.hud.hintAfterRain || hintClock > T.hud.hintFor) hint.style.opacity = '0'
 
-  const plant = view.plantNear(garden, target)
+  // While it rains, the plant named is the one under the cloud, and the card sits over it.
+  const plant = view.plantNear(garden, c.raining ? { x: c.x, z: c.z } : target)
   let text = ''
   if (plant) {
     const kind = T.kinds[plant.kind]
@@ -348,6 +364,13 @@ function frame(now: number) {
     if (text) tip.textContent = text
     tip.style.opacity = text ? '1' : '0'
     lastTip = text
+  }
+  if (plant) {
+    const at = view.screenOf(plant.x, (plant.inBed ? T.bed.height : 0) + PLANT_TOP[plant.kind] * Math.max(0.3, plant.growth), plant.z)
+    const r = tip.getBoundingClientRect()
+    const x = Math.min(innerWidth - r.width / 2 - 12, Math.max(r.width / 2 + 12, at.x))
+    tip.style.left = `${x}px`
+    tip.style.top = `${Math.max(r.height + 12, at.y - 14)}px`
   }
 
   requestAnimationFrame(frame)

@@ -148,3 +148,12 @@ Things tried and dropped, so nobody tries them again.
   to Neutral (playbook 2.3) for a colourful garden.
 - **A 1.4 MB HDR sky** for environment light; the generated sky dome costs nothing
   and matches the sky we draw.
+- **Rigged CC0 people for Rose and Walter (2026-10-27).** Quaternius and Poly Pizza
+  are blocked from the cloud; OpenGameArt's rigged humans are young, armoured or
+  toy-like, and the three.js Mixamo samples are young too. Faces, hands, hair and
+  shoulders were built in code instead. A four-view sheet from Rick is the way to
+  a real model.
+- **A cylinder rain veil brightest at its rim** read as a glass tube with hard
+  sides; it now fades out at its silhouette, its top and the ground.
+- **One soil tile per bed plant** showed moisture as a grid of squares; the bed is
+  one soil box now, with a soft round patch per plant.

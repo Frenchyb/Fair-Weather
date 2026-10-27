@@ -29,7 +29,7 @@ import { GradePass, blendGrade, grade, type Grade } from './grade'
 import { fieldUniforms, meadowUniforms, seasonUniforms, shadeUniforms, shaded } from './shade'
 import { WEATHERS } from '../sim/climate'
 import { WindView } from './wind'
-import { World, lambert, metricUV, rounded, surface } from './world'
+import { World, metricUV, rounded, surface } from './world'
 
 // Tints over the photographed soil: pale when dry, dark when wet.
 const DRY = new THREE.Color(0xf4e6d2)
@@ -75,9 +75,9 @@ function mulchEdge() {
   return edge
 }
 
-/** Raked soil, tinted by how wet it is. */
+/** Raked soil, tinted by how wet it is; it darkens under the shower on the sim's own soft disc. */
 function soilMaterial(colour: THREE.Color) {
-  const m = lambert(colour)
+  const m = shaded(new THREE.MeshStandardMaterial({ color: colour }), 'wet')
   m.map = surfaces.dirt.map
   m.normalMap = surfaces.dirt.normal
   return m
@@ -281,17 +281,26 @@ export class GardenScene {
       b.castShadow = b.receiveShadow = true
       this.scene.add(b)
     }
-    // One tile of soil under each plant, so its colour can show that plant's moisture.
+    // One bed of soil, and a soft round patch under each plant whose colour shows
+    // that plant's moisture. Squares of soil read as tiles, not as watered ground.
+    const bed = new THREE.Mesh(new THREE.BoxGeometry(width - 2 * wall, height, depth - 2 * wall), soilMaterial(DRY))
+    bed.position.y = height / 2
+    bed.receiveShadow = true
+    this.scene.add(bed)
     const cols = T.layout[0].length
     const rows = T.layout.length
     const tw = (width - 2 * wall) / cols
     const td = (depth - 2 * wall) / rows
-    const tile = new THREE.BoxGeometry(tw, height, td)
+    const patch = new THREE.CircleGeometry(Math.min(tw, td) * 0.62, 28)
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const mat = soilMaterial(DRY)
-        const t = new THREE.Mesh(tile, mat)
-        t.position.set((c - (cols - 1) / 2) * tw, height / 2, (r - (rows - 1) / 2) * td)
+        mat.alphaMap = mulchEdge()
+        mat.transparent = true
+        mat.depthWrite = false
+        const t = new THREE.Mesh(patch, mat)
+        t.rotation.x = -Math.PI / 2
+        t.position.set((c - (cols - 1) / 2) * tw, height + 0.004, (r - (rows - 1) / 2) * td)
         t.receiveShadow = true
         this.scene.add(t)
         this.soil.push(mat)
@@ -319,6 +328,13 @@ export class GardenScene {
   }
 
   /** The plant nearest a ground point, if the point is on or very near it. */
+  /** Where a point in the garden sits on screen, in CSS pixels from the canvas's top left. */
+  screenOf(x: number, y: number, z: number) {
+    const v = new THREE.Vector3(x, y, z).project(this.camera)
+    const r = this.renderer.domElement.getBoundingClientRect()
+    return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height, behind: v.z > 1 }
+  }
+
   plantNear(garden: Garden, at: { x: number; z: number } | null): Plant | null {
     if (!at) return null
     let best: Plant | null = null
@@ -405,8 +421,9 @@ export class GardenScene {
     // The air that is always moving: as strong as today's weather, the way the clouds drift.
     const cl = garden.climate
     const A = T.render.air
-    const air = WEATHERS.reduce((sum, w) => sum + cl.mix[w] * A[w], 0)
-    fieldUniforms.uAir.value = Math.max(air, this.gust)
+    // A gathering storm stirs the air: the closer it is to breaking, the harder the gusts.
+    const air = WEATHERS.reduce((sum, w) => sum + cl.mix[w] * A[w], 0) + Math.min(1, garden.storm.charge) * A.charge
+    fieldUniforms.uAir.value = Math.min(1, Math.max(air, this.gust))
     fieldUniforms.uAirDir.value.set(cl.windX, cl.windZ)
     meadowUniforms.uCenter.value.copy(this.focus)
 
@@ -497,7 +514,10 @@ export class GardenScene {
     horizon.lerp(tmp.copy(FOG_HORIZON).multiplyScalar(dim), fog).lerp(STORM, gloom * day * 0.8)
     sky.uOvercast.value = grey
     // A dull day is a darker day: less light overall, not just softer.
-    this.renderer.toneMappingExposure = T.look.exposure - grey * (0.2 + wet * 0.12) - fog * 0.08
+    // A storm darkens the whole frame further, and a strike lights it up for a moment.
+    const L = T.look
+    this.renderer.toneMappingExposure =
+      (L.exposure - grey * (L.greyDim + wet * L.rainDim) - fog * 0.08) * (1 - gloom * L.stormDim) + flash * L.flashExposure
     ;(sky.uDeck.value as THREE.Color).copy(DECK).lerp(RAIN_DECK, wet).multiplyScalar(dim)
     if (flash > 0) {
       zenith.lerp(new THREE.Color(0xe8ecff), flash * 0.6)

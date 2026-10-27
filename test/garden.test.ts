@@ -41,6 +41,16 @@ const kind = (g: Garden, k: Plant['kind']) => g.plants.find((p) => p.kind === k)
 /** Bed plant in the middle row, second column: all four neighbours are in the bed. */
 const middle = (g: Garden) => g.plants[5]
 
+/** The lawn starts mostly green; tests about greening start from a tired patch. */
+function parch(g: Garden, x: number, z: number, r: number) {
+  const gr = g.ground
+  for (let k = 0; k < gr.green.length; k++) {
+    const cx = gr.x0 + ((k % gr.cols) + 0.5) * gr.cell
+    const cz = gr.z0 + (Math.floor(k / gr.cols) + 0.5) * gr.cell
+    if (gr.lawn[k] && Math.hypot(cx - x, cz - z) < r) gr.green[k] = 0.2
+  }
+}
+
 describe('weather', () => {
   it('rain wets only the soil under the cloud', () => {
     const g = new Garden()
@@ -393,6 +403,7 @@ describe('the lawn remembers the weather', () => {
 
   it('rain greens dry grass, and it stays green after the ground dries', () => {
     const g = new Garden()
+    parch(g, lawnSpot.x, lawnSpot.z, 4)
     const before = g.ground.greenAt(lawnSpot.x, lawnSpot.z)
     expect(before).toBeLessThan(0.4)
     parkOver(g, lawnSpot.x, lawnSpot.z)
@@ -448,6 +459,7 @@ describe('the lawn remembers the weather', () => {
 
   it('green grass slowly creeps into its neighbours', () => {
     const g = new Garden()
+    parch(g, lawnSpot.x, lawnSpot.z, 4)
     g.ground.greenDisc(lawnSpot.x, lawnSpot.z, 1, 1)
     const edge = g.ground.greenAt(lawnSpot.x + 1.25, lawnSpot.z)
     run(g, 60, idle)

@@ -10,6 +10,23 @@ import { weld } from './batch'
 import { onBed, type Garden } from '../sim/garden'
 import { T } from '../tuning'
 import { rng } from './world'
+import { HEIGHT } from './plants'
+
+/** A soft round dot, so a splash reads as a burst of spray rather than a square pixel. */
+function sprayDot() {
+  const c = document.createElement('canvas')
+  c.width = c.height = 32
+  const g = c.getContext('2d')!
+  const grad = g.createRadialGradient(16, 16, 0, 16, 16, 16)
+  grad.addColorStop(0, 'rgba(255,255,255,1)')
+  grad.addColorStop(0.45, 'rgba(255,255,255,0.55)')
+  grad.addColorStop(1, 'rgba(255,255,255,0)')
+  g.fillStyle = grad
+  g.fillRect(0, 0, 32, 32)
+  const t = new THREE.CanvasTexture(c)
+  t.colorSpace = THREE.SRGBColorSpace
+  return t
+}
 
 const cloudUniforms = {
   uBase: { value: T.cloud.height },
@@ -41,7 +58,7 @@ export class CloudView {
   private drops: { x: number; y: number; z: number; floor: number; live: boolean }[] = []
   private spawnDebt = 0
   private splash: THREE.Points
-  private splashes: { x: number; y: number; z: number; age: number }[] = []
+  private splashes: { x: number; y: number; z: number; vx: number; vy: number; vz: number; age: number }[] = []
   private nextSplash = 0
   private veil: THREE.Mesh
   private veilMat: THREE.ShaderMaterial
@@ -101,13 +118,13 @@ export class CloudView {
     for (let i = 0; i < m; i++) this.drops.push({ x: 0, y: -10, z: 0, floor: 0, live: false })
     scene.add(this.rain)
 
-    const k = 700
+    const k = T.render.splash.pool
     this.splash = new THREE.Points(
       new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(k * 3), 3)),
-      new THREE.PointsMaterial({ color: 0xdfeaf2, size: 0.06, transparent: true, opacity: 0.8, depthWrite: false }),
+      new THREE.PointsMaterial({ color: 0xe4eef5, map: sprayDot(), size: T.render.splash.size, transparent: true, opacity: 0.85, depthWrite: false }),
     )
     this.splash.frustumCulled = false
-    for (let i = 0; i < k; i++) this.splashes.push({ x: 0, y: -10, z: 0, age: 1 })
+    for (let i = 0; i < k; i++) this.splashes.push({ x: 0, y: -10, z: 0, vx: 0, vy: 0, vz: 0, age: 1 })
     scene.add(this.splash)
 
     // A faint veil from the cloud's base to the ground: where the shower is falling.
@@ -119,9 +136,11 @@ export class CloudView {
       vertexShader: `varying float vH; varying vec3 vN; varying vec3 vV;
         void main() { vH = position.y + 0.5; vec4 w = modelViewMatrix * vec4(position, 1.0);
           vN = normalize(normalMatrix * normal); vV = normalize(-w.xyz); gl_Position = projectionMatrix * w; }`,
+      // Thickest through the middle of the shower and fading to nothing at its
+      // sides, up into the cloud and down to the ground, so it has no hard edge anywhere.
       fragmentShader: `uniform float uOpacity; uniform vec3 uColor; varying float vH; varying vec3 vN; varying vec3 vV;
-        void main() { float edge = 1.0 - abs(dot(vN, vV));
-          float a = uOpacity * (0.35 + 0.65 * edge) * smoothstep(0.0, 0.15, vH) * (0.55 + 0.45 * vH);
+        void main() { float face = abs(dot(vN, vV));
+          float a = uOpacity * pow(face, 2.5) * smoothstep(0.0, 0.25, vH) * (1.0 - smoothstep(0.6, 1.0, vH));
           gl_FragColor = vec4(uColor, a); }`,
     })
     this.veil = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 32, 1, true), this.veilMat)
@@ -179,7 +198,10 @@ export class CloudView {
     const storming = this.storm > 0.3
     const radius = storming ? T.storm.radius : garden.radius
     // In winter the cloud snows instead; `Precip` draws the flakes.
-    const rate = (c.raining && !garden.climate.dormant ? 900 : 0) + (storming ? 2600 * this.storm : 0)
+    const R = T.render
+    const rate = (c.raining && !garden.climate.dormant ? R.showerRain : 0) + (storming ? R.stormRain * this.storm : 0)
+    // Plants the shower can reach: a drop that falls on one lands on its leaves, not the soil.
+    const leafy = garden.plants.filter((p) => Math.hypot(p.x - c.x, p.z - c.z) < radius + 0.5 && p.growth > 0.15)
     this.spawnDebt += rate * dt
     const len = 0.7
     const top = this.y - 0.2
@@ -189,14 +211,21 @@ export class CloudView {
         d.y -= fall
         if (d.y < d.floor) {
           d.live = false
-          // One splash in three, which reads as plenty.
+          // One drop in three splashes, into a few droplets thrown up and out.
           if (i % 3 === 0) {
-            const s = this.splashes[this.nextSplash]
-            this.nextSplash = (this.nextSplash + 1) % this.splashes.length
-            s.x = d.x
-            s.z = d.z
-            s.y = d.floor
-            s.age = 0
+            for (let j = 0; j < T.render.splash.droplets; j++) {
+              const s = this.splashes[this.nextSplash]
+              this.nextSplash = (this.nextSplash + 1) % this.splashes.length
+              const a = Math.random() * Math.PI * 2
+              const out = 0.4 + Math.random() * 0.6
+              s.x = d.x
+              s.z = d.z
+              s.y = d.floor + 0.02
+              s.vx = Math.cos(a) * out
+              s.vz = Math.sin(a) * out
+              s.vy = 0.8 + Math.random() * 0.9
+              s.age = 0
+            }
           }
         }
       }
@@ -207,6 +236,13 @@ export class CloudView {
         d.x = c.x + Math.cos(a) * r
         d.z = c.z + Math.sin(a) * r
         d.floor = onBed(d.x, d.z) ? T.bed.height : 0
+        for (const p of leafy) {
+          const reach = (T.kinds[p.kind].reach ?? 0.4) * 0.8 * p.growth
+          if (Math.hypot(d.x - p.x, d.z - p.z) < reach) {
+            d.floor = (p.inBed ? T.bed.height : 0) + HEIGHT[p.kind] * p.growth * (0.45 + Math.random() * 0.45)
+            break
+          }
+        }
         d.y = top - Math.random() * 1.2
         d.live = true
       }
@@ -223,10 +259,17 @@ export class CloudView {
     })
     this.spawnDebt = Math.min(this.spawnDebt, 50)
     pos.needsUpdate = true
+    const life = T.render.splash.life
     this.splashes.forEach((s, i) => {
       s.age += dt
-      const on = s.age < 0.18
-      sp.setXYZ(i, s.x, on ? s.y + 0.03 + s.age * 0.4 : -10, s.z)
+      const on = s.age < life
+      if (on) {
+        s.x += s.vx * dt
+        s.z += s.vz * dt
+        s.y += s.vy * dt
+        s.vy -= 9.8 * dt
+      }
+      sp.setXYZ(i, s.x, on ? s.y : -10, s.z)
     })
     sp.needsUpdate = true
   }

@@ -121,10 +121,25 @@ function figure(rose: boolean, scene: THREE.Scene): Figure {
   for (const x of [-0.104, 0.104]) head.add(part(ball, std(skin), x, 0.11, 0, 0.018, 0.03, 0.014))
   head.add(part(ball, std(skin), 0, 0.1, 0.11, 0.02, 0.026, 0.024))
   head.add(part(ball, std(skin), 0, 0.03, 0.06, 0.06, 0.04, 0.05))
+  // A face that reads from the usual height: dark eyes under pale brows, rosy
+  // cheeks and a small smile. Walter has a moustache.
+  const brow = rose ? 0xbdb8b0 : 0xd8d4cc
+  for (const x of [-0.04, 0.04]) {
+    head.add(part(ball, std(0x2a221c), x, 0.135, 0.1, 0.014, 0.017, 0.008))
+    const b = part(block, std(brow), x, 0.163, 0.098, 0.036, 0.009, 0.012)
+    b.rotation.z = x < 0 ? -0.18 : 0.18
+    head.add(b)
+    head.add(part(ball, std(0xe39a86), x * 1.45, 0.09, 0.083, 0.022, 0.016, 0.01))
+  }
+  head.add(part(ball, std(0x9a5446), 0, 0.062, 0.1, 0.026, 0.007, 0.008))
+  if (!rose) head.add(part(ball, std(0xd0ccc4), 0, 0.078, 0.112, 0.04, 0.013, 0.014))
   if (rose) {
-    // Grey hair and a bun.
-    head.add(part(ball, std(0xc9c6c0), 0, 0.16, -0.02, 0.112, 0.105, 0.112))
-    head.add(part(ball, std(0xc9c6c0), 0, 0.2, -0.1, 0.06, 0.06, 0.06))
+    // Grey hair with some body: soft waves over the ears, a fringe and a bun.
+    const hair = std(0xc9c6c0)
+    head.add(part(ball, hair, 0, 0.16, -0.02, 0.112, 0.105, 0.112))
+    head.add(part(ball, hair, 0, 0.2, -0.1, 0.06, 0.06, 0.06))
+    for (const x of [-0.085, 0.085]) head.add(part(ball, hair, x, 0.135, -0.025, 0.05, 0.075, 0.075))
+    head.add(part(ball, hair, 0, 0.205, 0.045, 0.095, 0.035, 0.06))
   } else {
     // Grey at the sides, and a flat cap.
     head.add(part(ball, std(0xb8b4ac), 0, 0.12, -0.02, 0.108, 0.08, 0.105))
@@ -132,12 +147,20 @@ function figure(rose: boolean, scene: THREE.Scene): Figure {
     head.add(part(block, std(0x6b5a44), 0, 0.19, 0.1, 0.16, 0.02, 0.1))
   }
   head.add(part(leg, std(skin), 0, 0.03, 0, 0.045, 0.07, 0.045))
+  // A touch larger than life, like the animals, so a face reads from up here.
+  head.scale.setScalar(T.render.headSize)
+  // Shoulders: a rounded yoke across the top of the body, so the arms hang from something.
+  hips.add(part(ball, std(top), 0, 0.57, 0, 0.23, 0.075, 0.13))
   // Arms: upper arm, elbow, forearm and a hand. The hand keeps the upper arm's
   // angle, so whatever it holds hangs as it did before the arm could bend.
   const AL = limb(top, top, 0.58, 0.058, -0.205, 0.56)
   const AR = limb(top, top, 0.58, 0.058, 0.205, 0.56)
   for (const a of [AL, AR]) {
-    a.end.add(part(ball, std(skin), 0, -0.04, 0.005, 0.045, 0.06, 0.035))
+    // A hand: a cuff, a flat palm with the fingers together, and a thumb on the inside.
+    const inside = a === AL ? 1 : -1
+    a.end.add(part(ball, std(top), 0, 0.0, 0.0, 0.05, 0.03, 0.05))
+    a.end.add(part(ball, std(skin), 0, -0.055, 0.004, 0.036, 0.062, 0.02))
+    a.end.add(part(ball, std(skin), inside * 0.028, -0.04, 0.016, 0.012, 0.026, 0.012))
     // A rounded shoulder, so the arm grows out of the body rather than hanging beside it.
     a.g.add(part(ball, std(top), 0, -0.01, 0, 0.075, 0.08, 0.08))
   }
