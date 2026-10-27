@@ -205,7 +205,7 @@ export class GardenScene {
     this.effects = new Effects(s, garden)
 
     // Every bee is one instance of each of three parts: three draw calls for the whole swarm.
-    const beeBody = new THREE.SphereGeometry(0.045, 8, 6)
+    const beeBody = new THREE.SphereGeometry(T.render.beeSize, 8, 6)
     const nBees = garden.plants.length * T.render.beesPerPlant
     const part = (mat: THREE.Material, sx: number, sy: number, sz: number, y = 0) => {
       const m = new THREE.InstancedMesh(beeBody, mat, nBees)
@@ -294,9 +294,11 @@ export class GardenScene {
     const patch = new THREE.CircleGeometry(Math.min(tw, td) * 0.62, 28)
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        const mat = soilMaterial(DRY)
+        // Plain-shaded, so the shower's own darkening (on the bed below) isn't counted twice.
+        const mat = shaded(new THREE.MeshStandardMaterial({ color: DRY, map: surfaces.dirt.map, normalMap: surfaces.dirt.normal }))
         mat.alphaMap = mulchEdge()
         mat.transparent = true
+        mat.opacity = T.render.soilPatch
         mat.depthWrite = false
         const t = new THREE.Mesh(patch, mat)
         t.rotation.x = -Math.PI / 2

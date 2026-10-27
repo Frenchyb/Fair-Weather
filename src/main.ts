@@ -335,7 +335,7 @@ function frame(now: number) {
     ? 'Storm! Steer it round with the cloud.'
     : ready
       ? 'Storm ready: press G to let it go.'
-      : 'Charges as the lawn greens and plants bloom.'
+      : 'Charges as the lawn greens and plants bloom; G lets it go when full.'
 
   const wild = garden.wildflowers.length
   const night = garden.daylight < 0.5 ? 'night' : 'day'

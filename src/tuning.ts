@@ -486,7 +486,7 @@ export const T = {
     /** Exposure taken off on a grey day, more again when it rains, and the share a storm takes off on top. */
     greyDim: 0.2,
     rainDim: 0.25,
-    stormDim: 0.3,
+    stormDim: 0.2,
     /** Exposure added at the height of a lightning flash. */
     flashExposure: 1.2,
     sun: 4.2,
@@ -523,7 +523,7 @@ export const T = {
     rainSpeed: 16,
     /** Drops a second from the player's shower, and from a storm at full strength. */
     showerRain: 900,
-    stormRain: 5200,
+    stormRain: 4000,
     /** Where drops land: a few droplets thrown up, how big (metres), for how long (seconds). */
     splash: { pool: 2400, droplets: 3, size: 0.07, life: 0.28 },
     /**
@@ -545,6 +545,10 @@ export const T = {
     precip: { rain: 2500, rainRate: 2200, snow: 3500, snowRate: 900, cloudSnowRate: 500, leaves: 220, leafRate: 14, reach: 22, height: 18 },
     /** Drifting clouds overhead, and how many puffs each. */
     skyPuffs: 9,
+    /** A bee's body radius, metres: big enough to spot, small enough not to rival the tomatoes. */
+    beeSize: 0.028,
+    /** How strongly the patch under each bed plant shows that plant's own moisture. */
+    soilPatch: 0.6,
     /** Rose's and Walter's heads, drawn a little larger than life so their faces read. */
     headSize: 1.15,
     /** Visitors drawn larger than life, so they read from the usual height. */
