@@ -219,6 +219,17 @@ export class GardenScene {
     part(shaded(new THREE.MeshStandardMaterial({ color: 0xe8eef0, transparent: true, opacity: 0.6 }), 'creature'), 1.6, 0.15, 0.6, 0.04)
 
     // Ambient occlusion and a touch of bloom, then tone mapping.
+    // Shadows from things too small or too many to matter cost a draw each in
+    // the shadow pass (perf audit 2026-10-29): only bigger, single things cast.
+    const P = T.perf.shadows
+    s.traverse((o) => {
+      const m = o as THREE.Mesh
+      if (!m.isMesh || !m.castShadow) return
+      const inst = (m as THREE.InstancedMesh).isInstancedMesh ? (m as THREE.InstancedMesh).count : 1
+      m.geometry.computeBoundingSphere()
+      const r = (m.geometry.boundingSphere?.radius ?? 1) * o.getWorldScale(new THREE.Vector3()).x
+      if (inst > P.maxInstances || r < P.minRadius) m.castShadow = false
+    })
     this.composer = new EffectComposer(this.renderer)
     this.plain = new RenderPass(s, this.camera)
     try {

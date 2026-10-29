@@ -514,7 +514,13 @@ export const T = {
   hud: { hintFor: 15, hintAfterRain: 3 },
 
   /** The performance budget the overlay (P) checks against: what a phone held sideways should manage. */
-  perf: { fps: 30, drawCalls: 100, triangles: 500000 },
+  perf: {
+    fps: 30,
+    drawCalls: 100,
+    triangles: 500000,
+    // Meshes that skip the sun's shadow pass: smaller than this (m), or instanced more than this.
+    shadows: { minRadius: 0.2, maxInstances: 400 },
+  },
 
   render: {
     /** How dark the cloud's shade looks, as a brightness multiplier. */
@@ -533,7 +539,7 @@ export const T = {
      * camera's focus in the vertex shader (cell in metres, tufts a side), fading
      * out at the edge. Phones and ?lite get the coarser grid.
      */
-    meadow: { cell: 0.2, tufts: 220, cellLite: 0.3, tuftsLite: 130, height: 0.36 },
+    meadow: { cell: 0.26, tufts: 170, cellLite: 0.3, tuftsLite: 130, height: 0.36 },
     /**
      * The air that is always moving, as gusts travelling downwind across the
      * whole garden. Strength 0 calm to 1 gale, per weather; gust size in metres
