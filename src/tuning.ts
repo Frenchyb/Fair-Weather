@@ -551,7 +551,9 @@ export const T = {
     mowStripe: 1.6,
     mowContrast: 0.07,
     /** A bee's body radius, metres: big enough to spot, small enough not to rival the tomatoes. */
-    beeSize: 0.022,
+    beeSize: 0.012,
+    beeColour: 0x8a6a32,
+    rainOpacity: 0.36,
     /** Mulch ring round a plant outside the bed, as a share of its reach: just past the grass's clearing. */
     mulch: 0.65,
     /** How strongly the patch under each bed plant shows that plant's own moisture. */

@@ -112,7 +112,7 @@ export class CloudView {
     const m = T.render.rainDrops
     this.rain = new THREE.LineSegments(
       new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(m * 6), 3)),
-      new THREE.LineBasicMaterial({ color: 0x9fb8cc, transparent: true, opacity: 0.6 }),
+      new THREE.LineBasicMaterial({ color: 0x9fb8cc, transparent: true, opacity: T.render.rainOpacity }),
     )
     this.rain.frustumCulled = false
     for (let i = 0; i < m; i++) this.drops.push({ x: 0, y: -10, z: 0, floor: 0, live: false })

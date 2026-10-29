@@ -214,7 +214,7 @@ export class GardenScene {
       this.bees.push({ mesh: m, local: new THREE.Matrix4().compose(new THREE.Vector3(0, y, 0), new THREE.Quaternion(), new THREE.Vector3(sx, sy, sz)) })
       s.add(m)
     }
-    part(shaded(new THREE.MeshStandardMaterial({ color: 0xc99a2e, roughness: 0.8 }), 'creature'), 1, 1, 1.3)
+    part(shaded(new THREE.MeshStandardMaterial({ color: T.render.beeColour, roughness: 0.8 }), 'creature'), 1, 1, 1.3)
     part(shaded(new THREE.MeshStandardMaterial({ color: 0x2a2018 }), 'creature'), 1.05, 1.05, 0.35)
     part(shaded(new THREE.MeshStandardMaterial({ color: 0xe8eef0, transparent: true, opacity: 0.6 }), 'creature'), 1.6, 0.15, 0.6, 0.04)
 
