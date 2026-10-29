@@ -157,3 +157,11 @@ Things tried and dropped, so nobody tries them again.
   sides; it now fades out at its silhouette, its top and the ground.
 - **One soil tile per bed plant** showed moisture as a grid of squares; the bed is
   one soil box now, with a soft round patch per plant.
+- **Rose and Walter on a real human base (2026-10-29).** The MakeHuman man
+  Hedgerow uses (head, hands, casual suit) reshaped to the sheet and cut onto the
+  game's joints by `tools/people/fit.py`, clothes painted as vertex colours. Blind
+  review scored it below the code-built v16 (Rose 4 vs 6, Walter 3 vs 6): the
+  photo-textured man's face reads as realistic, not cozy, and painting clothes
+  onto the suit leaves jagged colour edges, a fur-like fringe at collars and wet
+  streaks. Parked in `tools/people/` (with the loader, `people-body.ts`). To try
+  again: a stylised base head, and cloth as separate shells, not paint.
