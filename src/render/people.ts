@@ -2,7 +2,7 @@
  * Rose and Walter, the washing line, and the things they leave about: the
  * snowman, the vase of cut flowers in the front window, the crate of produce
  * by the door, the basket waiting on a grey morning. The people are simple
- * figures; what matters at this distance is the pose (bent over the bed,
+ * figures built to the approved turnaround sheet; what matters at this distance is the pose (bent over the bed,
  * arms up at the line, sitting with tea, running for the door) and what they
  * carry. Reads the garden only.
  */
@@ -50,6 +50,9 @@ interface Figure {
   produce: THREE.MeshStandardMaterial
   bubble: THREE.Sprite
   light: THREE.PointLight | null
+  tool: THREE.Object3D
+  /** How far the arms hang out from the body at rest: Rose's sit over her middle. */
+  spread: number
   phase: number
 }
 
@@ -81,91 +84,178 @@ function turned(points: [number, number][], color: number, depth: number) {
   return m
 }
 
-function figure(rose: boolean, scene: THREE.Scene): Figure {
+export function figure(rose: boolean, scene: THREE.Scene): Figure {
+  // Built to the approved turnaround sheet: Rose short and round in a raspberry
+  // cardigan, green apron and floral wellies; Walter tall and thin in a check
+  // shirt, tweed waistcoat, corduroys and boots. Same joints for both, so every
+  // pose works on either; the whole figure is then scaled to their heights.
   const root = new THREE.Group()
-  const skin = 0xe8c4a8
-  const top = rose ? 0x5b7fa6 : 0x6e7b52
-  const lower = rose ? 0x5b7fa6 : 0x4a4f5c
-  const shoe = 0x3a2e26
-  // Legs: thigh, knee, shin and a shoe with a toe. Rose's shins are stockinged.
-  const L = limb(lower, rose ? 0xd9b89c : lower, 0.82, 0.075, -0.09, 0.85)
-  const R = limb(lower, rose ? 0xd9b89c : lower, 0.82, 0.075, 0.09, 0.85)
+  const skin = 0xeec2a8
+  const flesh = std(skin)
+  const top = rose ? 0xa4475a : 0xe4dcc0 // cardigan / shirt
+  const lower = rose ? 0x5a4434 : 0x6a6234 // leggings / corduroy
+  const boot = rose ? 0x6f8a52 : 0x6b4a30
+  const W = rose ? 0.085 : 0.062
+  const L = limb(lower, rose ? boot : lower, 0.82, W, rose ? -0.1 : -0.085, 0.85)
+  const R = limb(lower, rose ? boot : lower, 0.82, W, rose ? 0.1 : 0.085, 0.85)
   for (const l of [L, R]) {
-    l.end.add(part(block, std(shoe), 0, -0.02, 0.04, 0.1, 0.07, 0.22))
-    l.end.add(part(ball, std(shoe), 0, -0.03, 0.12, 0.05, 0.035, 0.06))
+    if (rose) {
+      // Wellies to just under the knee, with a rolled brown top and roses on the shaft.
+      l.joint.add(part(rod, std(0x4a382a), 0, -0.07, 0, W * 1.05, 0.04, W * 1.05))
+      for (let i = 0; i < 4; i++) l.joint.add(part(ball, std(0xd88a90), Math.sin(i * 2.1) * W * 0.85, -0.14 - i * 0.07, Math.cos(i * 2.1) * W * 0.85, 0.014, 0.014, 0.008))
+      l.end.add(part(block, std(boot), 0, -0.025, 0.04, 0.12, 0.08, 0.22))
+      l.end.add(part(ball, std(boot), 0, -0.035, 0.13, 0.06, 0.045, 0.06))
+      l.end.add(part(block, std(0x3a3226), 0, -0.065, 0.045, 0.125, 0.02, 0.23))
+    } else {
+      // Turned-up cuffs, a band of wool sock, and big scuffed work boots.
+      l.joint.add(part(rod, std(0x7a7240), 0, -(0.82 - 0.82 * 0.52) + 0.1, 0, W * 1.08, 0.05, W * 1.08))
+      l.end.add(part(rod, std(0xd9ccae), 0, 0.045, 0, W * 0.9, 0.05, W * 0.9))
+      l.end.add(part(block, std(boot), 0, -0.02, 0.045, 0.115, 0.09, 0.25))
+      l.end.add(part(ball, std(boot), 0, -0.03, 0.15, 0.06, 0.05, 0.065))
+      l.end.add(part(block, std(0x3a2a1e), 0, -0.065, 0.05, 0.12, 0.025, 0.27))
+    }
   }
   root.add(L.g, R.g)
   const hips = new THREE.Group()
   hips.position.y = 0.85
   root.add(hips)
   if (rose) {
-    // A dress: a fitted bodice over a skirt that flares to below the knee, and an apron.
-    hips.add(turned([[0.0, -0.52], [0.27, -0.52], [0.25, -0.35], [0.19, -0.1], [0.15, 0.04], [0.0, 0.05]], top, 0.85))
-    hips.add(turned([[0.0, 0.0], [0.14, 0.0], [0.13, 0.14], [0.16, 0.36], [0.18, 0.5], [0.13, 0.6], [0.05, 0.64], [0.0, 0.64]], top, 0.62))
-    hips.add(part(block, std(0xf1ece0), 0, -0.2, 0.18, 0.28, 0.5, 0.02))
-    hips.add(part(block, std(0xf1ece0), 0, 0.02, 0.0, 0.3, 0.04, 0.27))
+    const apron = 0x7c9358
+    const pocket = 0x6c8249
+    // A sage skirt to mid-calf under the apron, then a full, round cardigan body.
+    hips.add(turned([[0.0, -0.5], [0.28, -0.5], [0.27, -0.3], [0.24, -0.06], [0.2, 0.06], [0.0, 0.07]], apron, 0.86))
+    hips.add(turned([[0.0, -0.06], [0.28, -0.06], [0.305, 0.08], [0.3, 0.2], [0.26, 0.33], [0.19, 0.44], [0.12, 0.52], [0.0, 0.56]], top, 0.82))
+    // Apron front, bib and pockets with tools and gloves poking out.
+    hips.add(part(block, std(apron), 0, -0.22, 0.225, 0.42, 0.5, 0.02))
+    hips.add(part(block, std(apron), 0, 0.24, 0.215, 0.24, 0.3, 0.02))
+    for (const x of [-0.11, 0.11]) hips.add(part(block, std(pocket), x, -0.12, 0.24, 0.15, 0.13, 0.015))
+    hips.add(part(rod, std(0x8a5a34), -0.14, -0.02, 0.245, 0.012, 0.12, 0.012))
+    hips.add(part(rod, std(0xb8bcc0), -0.09, -0.03, 0.245, 0.01, 0.1, 0.01))
+    hips.add(part(block, std(0xe6d6b8), 0.12, -0.04, 0.25, 0.07, 0.11, 0.02))
+    // The apron strings, tied in a bow at the back.
+    hips.add(part(block, std(apron), 0, 0.08, 0, 0.6, 0.025, 0.5))
+    for (const x of [-0.05, 0.05]) hips.add(part(ball, std(apron), x, 0.08, -0.25, 0.045, 0.03, 0.015))
+    hips.add(part(block, std(apron), -0.02, -0.02, -0.255, 0.015, 0.14, 0.01))
+    hips.add(part(block, std(apron), 0.02, -0.02, -0.255, 0.015, 0.14, 0.01))
+    // The floral blouse at the collar, and a row of cardigan buttons.
+    hips.add(part(ball, std(0xefe2c8), 0, 0.6, 0.06, 0.1, 0.045, 0.07))
+    for (let i = 0; i < 3; i++) hips.add(part(ball, std(0xd88a90), -0.04 + i * 0.04, 0.6, 0.125, 0.01, 0.01, 0.006))
   } else {
-    // Trousers to the waist, and a work coat that hangs just past the hips.
-    hips.add(part(block, std(lower), 0, -0.04, 0, 0.3, 0.16, 0.2))
-    // Fuller at the chest and hem, in at the waist, so the coat has a figure inside it.
-    hips.add(turned([[0.0, -0.14], [0.2, -0.14], [0.185, 0.04], [0.168, 0.2], [0.19, 0.36], [0.212, 0.48], [0.2, 0.56], [0.12, 0.63], [0.05, 0.65], [0.0, 0.65]], top, 0.66))
-    // Collar, pockets and a row of buttons, so the coat reads as a coat.
-    hips.add(part(block, std(0x5c6844), 0, 0.6, 0.02, 0.24, 0.06, 0.16))
-    for (const x of [-0.1, 0.1]) hips.add(part(block, std(0x5c6844), x, 0.02, 0.12, 0.1, 0.08, 0.015))
-    for (let i = 0; i < 3; i++) hips.add(part(ball, std(0x3a3328), 0, 0.12 + i * 0.13, 0.125, 0.012, 0.012, 0.008))
+    // Corduroy to the waist, a check shirt, and a tweed waistcoat over it with a
+    // V front, pointed hem, buttons and a back buckle.
+    const tweed = 0x5a4330
+    hips.add(part(block, std(lower), 0, -0.04, 0, 0.25, 0.16, 0.17))
+    hips.add(turned([[0.0, -0.1], [0.14, -0.1], [0.14, 0.12], [0.158, 0.4], [0.165, 0.52], [0.1, 0.62], [0.04, 0.66], [0.0, 0.66]], top, 0.66))
+    hips.add(turned([[0.0, -0.12], [0.152, -0.12], [0.15, 0.1], [0.17, 0.38], [0.176, 0.5], [0.15, 0.55], [0.0, 0.55]], tweed, 0.68))
+    const vee = std(top)
+    for (const x of [-1, 1]) {
+      const v = part(block, vee, x * 0.03, 0.46, 0.112, 0.03, 0.2, 0.01)
+      v.rotation.z = x * 0.22
+      hips.add(v)
+      const tip = part(block, std(tweed), x * 0.07, -0.13, 0.095, 0.08, 0.06, 0.02)
+      tip.rotation.z = x * 0.5
+      hips.add(tip)
+    }
+    hips.add(part(ball, std(0x4a5a34), 0, 0.6, 0.04, 0.055, 0.03, 0.05))
+    for (let i = 0; i < 4; i++) hips.add(part(ball, std(0x2a2018), 0, 0.02 + i * 0.075, 0.118, 0.01, 0.01, 0.006))
+    hips.add(part(block, std(0x3a2c20), 0, 0.06, -0.115, 0.14, 0.03, 0.01))
+    hips.add(part(block, std(0xb8a060, 0.4), 0, 0.06, -0.12, 0.03, 0.035, 0.01))
   }
   const head = new THREE.Group()
-  head.position.y = 0.74
+  head.position.set(0, rose ? 0.56 : 0.66, rose ? 0 : 0.045) // Walter stoops a little
   hips.add(head)
-  head.add(part(ball, std(skin), 0, 0.12, 0.005, 0.105, 0.125, 0.11))
-  // Ears, a nose and a chin, so the head has a front.
-  for (const x of [-0.104, 0.104]) head.add(part(ball, std(skin), x, 0.11, 0, 0.018, 0.03, 0.014))
-  head.add(part(ball, std(skin), 0, 0.1, 0.11, 0.02, 0.026, 0.024))
-  head.add(part(ball, std(skin), 0, 0.03, 0.06, 0.06, 0.04, 0.05))
-  // A face that reads from the usual height: dark eyes under pale brows, rosy
-  // cheeks and a small smile. Walter has a moustache.
-  const brow = rose ? 0xbdb8b0 : 0xd8d4cc
+  if (rose) {
+    // A round, soft face with full rosy cheeks.
+    head.add(part(ball, flesh, 0, 0.11, 0.005, 0.11, 0.115, 0.108))
+    for (const x of [-0.1, 0.1]) head.add(part(ball, flesh, x, 0.1, 0, 0.016, 0.026, 0.012))
+    head.add(part(ball, flesh, 0, 0.09, 0.11, 0.022, 0.022, 0.022))
+    for (const x of [-0.055, 0.055]) head.add(part(ball, std(0xe58c84), x, 0.075, 0.085, 0.032, 0.024, 0.014))
+  } else {
+    // Long and narrow, with a domed bald top, big ears and a big nose.
+    head.add(part(ball, flesh, 0, 0.13, 0.005, 0.092, 0.135, 0.1))
+    head.add(part(ball, flesh, 0, 0.035, 0.05, 0.055, 0.045, 0.05))
+    for (const x of [-0.098, 0.098]) head.add(part(ball, flesh, x, 0.11, -0.005, 0.03, 0.048, 0.016))
+    head.add(part(ball, std(0xe3a08c), 0, 0.092, 0.12, 0.032, 0.04, 0.045))
+  }
+  // Eyes and brows, and a closed-mouth smile.
+  const brow = rose ? 0xd8d4cc : 0xc8c4bc
   for (const x of [-0.04, 0.04]) {
-    head.add(part(ball, std(0x2a221c), x, 0.135, 0.1, 0.014, 0.017, 0.008))
-    const b = part(block, std(brow), x, 0.163, 0.098, 0.036, 0.009, 0.012)
+    head.add(part(ball, std(0x2a221c), x, 0.13, 0.098, 0.013, 0.016, 0.008))
+    const b = part(block, std(brow), x, 0.16, 0.096, 0.034, 0.009, 0.012)
     b.rotation.z = x < 0 ? -0.18 : 0.18
     head.add(b)
-    head.add(part(ball, std(0xe39a86), x * 1.45, 0.09, 0.083, 0.022, 0.016, 0.01))
   }
-  head.add(part(ball, std(0x9a5446), 0, 0.062, 0.1, 0.026, 0.007, 0.008))
-  if (!rose) head.add(part(ball, std(0xd0ccc4), 0, 0.078, 0.112, 0.04, 0.013, 0.014))
+  head.add(part(ball, std(0xa0584a), 0, rose ? 0.055 : 0.052, 0.1, 0.03, 0.007, 0.008))
   if (rose) {
-    // Grey hair with some body: soft waves over the ears, a fringe and a bun.
-    const hair = std(0xc9c6c0)
-    head.add(part(ball, hair, 0, 0.16, -0.02, 0.112, 0.105, 0.112))
-    head.add(part(ball, hair, 0, 0.2, -0.1, 0.06, 0.06, 0.06))
-    for (const x of [-0.085, 0.085]) head.add(part(ball, hair, x, 0.135, -0.025, 0.05, 0.075, 0.075))
-    head.add(part(ball, hair, 0, 0.205, 0.045, 0.095, 0.035, 0.06))
+    // White curls: a big soft cloud, wider than the head, over the crown, ears and back.
+    const hair = std(0xece6dc)
+    for (let i = 0; i < 26; i++) {
+      const a = (i / 26) * Math.PI * 2 * 1.618
+      const up = 0.07 + (((i * 7) % 13) / 13) * 0.17
+      const r = 0.135 - (up - 0.07) * 0.3
+      const z = Math.cos(a) * r
+      if (z > 0.05 && up < 0.17) continue // keep the face clear
+      head.add(part(ball, hair, Math.sin(a) * r * 1.1, up, z - 0.015, 0.06, 0.055, 0.058))
+    }
+    head.add(part(ball, hair, 0, 0.23, -0.01, 0.13, 0.075, 0.125))
+    for (const x of [-0.06, 0, 0.06]) head.add(part(ball, hair, x, 0.205, 0.075, 0.05, 0.042, 0.042))
   } else {
-    // Grey at the sides, and a flat cap.
-    head.add(part(ball, std(0xb8b4ac), 0, 0.12, -0.02, 0.108, 0.08, 0.105))
-    head.add(part(ball, std(0x6b5a44), 0, 0.2, 0, 0.118, 0.05, 0.12))
-    head.add(part(block, std(0x6b5a44), 0, 0.19, 0.1, 0.16, 0.02, 0.1))
+    // Grey at the sides and back, and round wire glasses.
+    const hair = std(0xc8c4bc)
+    for (const x of [-1, 1]) head.add(part(ball, hair, x * 0.085, 0.14, -0.035, 0.03, 0.05, 0.06))
+    head.add(part(ball, hair, 0, 0.13, -0.085, 0.07, 0.055, 0.03))
+    const wire = std(0x2a2622, 0.3)
+    for (const x of [-0.042, 0.042]) {
+      const lens = new THREE.Mesh(new THREE.TorusGeometry(0.024, 0.004, 6, 16), wire)
+      lens.position.set(x, 0.13, 0.104)
+      head.add(lens)
+      head.add(part(block, wire, x * 1.9, 0.135, 0.06, 0.004, 0.004, 0.09))
+    }
+    head.add(part(block, wire, 0, 0.135, 0.106, 0.03, 0.004, 0.004))
   }
-  head.add(part(leg, std(skin), 0, 0.03, 0, 0.045, 0.07, 0.045))
-  // A touch larger than life, like the animals, so a face reads from up here.
-  head.scale.setScalar(T.render.headSize)
-  // Shoulders: a rounded yoke across the top of the body, so the arms hang from something.
-  hips.add(part(ball, std(top), 0, 0.57, 0, 0.23, 0.075, 0.13))
-  // Arms: upper arm, elbow, forearm and a hand. The hand keeps the upper arm's
-  // angle, so whatever it holds hangs as it did before the arm could bend.
-  const AL = limb(top, top, 0.58, 0.058, -0.205, 0.56)
-  const AR = limb(top, top, 0.58, 0.058, 0.205, 0.56)
+  head.add(part(leg, flesh, 0, 0.03, 0, rose ? 0.05 : 0.04, 0.07, rose ? 0.05 : 0.04))
+  // Rose's head is big for her body, like the sheet's.
+  head.scale.setScalar(T.render.headSize * (rose ? T.render.roseHead : 1))
+  // Shoulders: round and soft for Rose, narrow and bony for Walter.
+  hips.add(part(ball, std(top), 0, rose ? 0.47 : 0.555, 0, rose ? 0.17 : 0.135, rose ? 0.09 : 0.05, rose ? 0.15 : 0.09))
+  // Arms: Rose's plump knitted sleeves end in a blouse cuff; Walter's shirt
+  // sleeves are rolled above the elbow over bare forearms.
+  const aw = rose ? 0.068 : 0.05
+  const ax = rose ? 0.19 : 0.165
+  const ay = rose ? 0.46 : 0.54
+  const AL = limb(top, rose ? top : skin, rose ? 0.5 : 0.62, aw, -ax, ay)
+  const AR = limb(top, rose ? top : skin, rose ? 0.5 : 0.62, aw, ax, ay)
   for (const a of [AL, AR]) {
-    // A hand: a cuff, a flat palm with the fingers together, and a thumb on the inside.
     const inside = a === AL ? 1 : -1
-    a.end.add(part(ball, std(top), 0, 0.0, 0.0, 0.05, 0.03, 0.05))
-    a.end.add(part(ball, std(skin), 0, -0.055, 0.004, 0.036, 0.062, 0.02))
-    a.end.add(part(ball, std(skin), inside * 0.028, -0.04, 0.016, 0.012, 0.026, 0.012))
-    // A rounded shoulder, so the arm grows out of the body rather than hanging beside it.
-    a.g.add(part(ball, std(top), 0, -0.01, 0, 0.075, 0.08, 0.08))
+    if (rose) a.end.add(part(ball, std(0xefe2c8), 0, 0.0, 0.0, 0.055, 0.03, 0.055))
+    else a.joint.add(part(rod, std(top), 0, 0.01, 0, aw * 1.25, 0.05, aw * 1.25))
+    a.end.add(part(ball, flesh, 0, -0.055, 0.004, 0.036, 0.062, 0.02))
+    a.end.add(part(ball, flesh, inside * 0.028, -0.04, 0.016, 0.012, 0.026, 0.012))
   }
   hips.add(AL.g, AR.g)
+  // Their own tools, in the left hand: Rose's galvanised can, Walter's trowel.
+  const tool = new THREE.Group()
+  const zinc = std(0xa9aeb0, 0.35)
+  if (rose) {
+    tool.add(part(rod, zinc, 0, -0.2, 0.02, 0.1, 0.2, 0.08))
+    const spout = part(rod, zinc, 0, -0.17, 0.17, 0.014, 0.26, 0.014)
+    spout.rotation.x = 0.9
+    tool.add(spout)
+    const rose_ = part(peak, zinc, 0, -0.08, 0.27, 0.03, 0.05, 0.03)
+    rose_.rotation.x = -0.7
+    tool.add(rose_)
+    const grip = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.008, 6, 12, Math.PI), zinc)
+    grip.position.set(0, -0.1, 0.02)
+    grip.rotation.y = Math.PI / 2
+    tool.add(grip)
+  } else {
+    tool.add(part(rod, std(0x8a5a34), 0, -0.03, 0.03, 0.014, 0.12, 0.014))
+    const blade = part(peak, std(0x9aa0a4, 0.35), 0, 0.1, 0.03, 0.04, 0.16, 0.008)
+    tool.add(blade)
+    tool.rotation.x = -0.3
+  }
+  tool.position.y = -0.05
+  AL.end.add(tool)
   const legL = L.g
   const legR = R.g
   const armL = AL.g
@@ -238,7 +328,8 @@ function figure(rose: boolean, scene: THREE.Scene): Figure {
   root.visible = false
   scene.add(root)
   const joints = { kneeL: L.joint, kneeR: R.joint, elbowL: AL.joint, elbowR: AR.joint, handL: AL.end, handR: AR.end }
-  return { root, hips, head, legL, legR, armL, armR, ...joints, props, produce, bubble, light, phase: rose ? 0 : 1.7 }
+  root.scale.setScalar(rose ? T.render.roseScale : T.render.walterScale)
+  return { root, hips, head, legL, legR, armL, armR, ...joints, props, produce, bubble, light, tool, spread: rose ? T.render.roseArms : 0.08, phase: rose ? 0 : 1.7 }
 }
 
 /** A thought bubble: a small picture, never words. */
@@ -511,8 +602,8 @@ export class PeopleView {
     f.head.rotation.set(0, 0, 0)
     f.legL.rotation.set(0, 0, 0)
     f.legR.rotation.set(0, 0, 0)
-    f.armL.rotation.set(0, 0, 0.08)
-    f.armR.rotation.set(0, 0, -0.08)
+    f.armL.rotation.set(0, 0, f.spread)
+    f.armR.rotation.set(0, 0, -f.spread)
     f.legL.position.y = f.legR.position.y = 0.85
 
     const ph = t + f.phase
@@ -622,6 +713,7 @@ export class PeopleView {
     show('carrots', carry === 'carrots')
     show('seed', carry === 'seed')
     show('umbrellaUp', p.umbrella)
+    f.tool.visible = !carry && !pegging && !['tea', 'snowman', 'shovel', 'feeder', 'porch'].includes(p.doing)
     if (p.produce) f.produce.color.setHex(BLOOM[p.produce] ?? 0xd8432f)
     if (carry === 'basket' && !p.moving && p.doing !== 'peg' && p.doing !== 'unpeg') f.armL.rotation.x = f.armR.rotation.x = -0.5
     if (p.umbrella) {

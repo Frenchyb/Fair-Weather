@@ -561,6 +561,11 @@ export const T = {
     soilPatch: 0.6,
     /** Rose's and Walter's heads, drawn a little larger than life so their faces read. */
     headSize: 1.15,
+    // Rose is short and round, Walter tall and thin (the turnaround sheet).
+    roseScale: 0.88,
+    roseHead: 1.3,
+    roseArms: -0.3, // negative swings the arms out over her middle
+    walterScale: 1.1,
     /** Visitors drawn larger than life, so they read from the usual height. */
     critterSize: { bird: 2.2, rabbit: 1.5, frog: 2, duck: 1.4 },
     beesPerPlant: 2,
