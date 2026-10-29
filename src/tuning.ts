@@ -553,6 +553,7 @@ export const T = {
     /** A bee's body radius, metres: big enough to spot, small enough not to rival the tomatoes. */
     beeSize: 0.012,
     beeColour: 0x8a6a32,
+    hiveBeeScale: 0.45,
     rainOpacity: 0.36,
     /** Mulch ring round a plant outside the bed, as a share of its reach: just past the grass's clearing. */
     mulch: 0.65,

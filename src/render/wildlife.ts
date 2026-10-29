@@ -245,7 +245,7 @@ export class WildlifeView {
     }
     for (let i = 0; i < 24; i++) {
       const b = C.bee()
-      b.scale.setScalar(1.5)
+      b.scale.setScalar(T.render.hiveBeeScale)
       b.visible = false
       scene.add(b)
       this.bees.push(b)

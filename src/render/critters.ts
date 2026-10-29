@@ -194,7 +194,7 @@ export function squirrel(): Made {
 
 export function bee(): THREE.Object3D {
   const g = new THREE.Group()
-  g.add(part(ball, std(0xe6b422), 0, 0, 0, 0.045, 0.04, 0.06))
+  g.add(part(ball, std(T.render.beeColour), 0, 0, 0, 0.045, 0.04, 0.06))
   g.add(part(ball, std(0x2a2018), 0, 0, -0.01, 0.047, 0.042, 0.02))
   const wing = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 })
   g.add(part(ball, wing, 0, 0.04, 0, 0.06, 0.008, 0.03))
