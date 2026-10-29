@@ -335,13 +335,15 @@ function frame(now: number) {
     ? 'Storm! Steer it round with the cloud.'
     : ready
       ? 'Storm ready: press G to let it go.'
-      : 'Charges as the lawn greens and plants bloom; G lets it go when full.'
+      : c.water / c.capacity < 0.3
+        ? 'Cloud running low: rest it over the pond to refill.'
+        : 'Hold to rain. The storm charges as the lawn greens and plants bloom; press G to let it go when full.'
 
   const wild = garden.wildflowers.length
   const night = garden.daylight < 0.5 ? 'night' : 'day'
   when.textContent = `${NAMES[cl.season]}, ${night}`
   lawnBar.style.width = lawnPc.textContent = pc(garden.ground.greenShare)
-  bloomsEl.textContent = `${garden.bloomed} of ${garden.plants.length}` + (wild ? `, ${wild} wild` : '')
+  bloomsEl.textContent = `${garden.bloomed} of ${garden.plants.length}` + (wild ? `, ${wild} wildflowers` : '')
 
   // The instructions step aside once the player has rained a little, or after a short while.
   if (garden.cloud.raining) hintShown += dt
@@ -355,6 +357,7 @@ function frame(now: number) {
     const kind = T.kinds[plant.kind]
     let mood = plant.need ? FEELING[plant.need] : 'It is happy.'
     if (plant.growth >= 1) mood = 'In full bloom.'
+    if (c.raining && Math.hypot(plant.x - c.x, plant.z - c.z) < garden.radius) mood = plant.need === 'soggy' ? 'It has had plenty: move on.' : 'Drinking it in.'
     else if (kind.pollen && plant.growth >= T.stages.flowering && !plant.pollinating) {
       mood = 'In blossom: give it a breeze.'
     } else if (plant.rich > 0) mood += ' The soil is rich from the lightning.'

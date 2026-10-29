@@ -21,6 +21,8 @@ export class Sound {
   private noise?: AudioBuffer
   private roof?: GainNode
   private hum?: GainNode
+  /** The beds of sound (rain, wind, roof, bees, crickets), dipped under the moments that matter. */
+  private bed?: GainNode
   private pondRain = 0
   private weatherWind = 0
 
@@ -31,6 +33,8 @@ export class Sound {
     if (session) session.type = 'playback'
     const ctx = new AudioContext()
     this.ctx = ctx
+    this.bed = ctx.createGain()
+    this.bed.connect(ctx.destination)
     this.startCrickets(ctx)
 
     // Each bed of sound loops its own noise, each a different length, so their
@@ -57,7 +61,7 @@ export class Sound {
     high.Q.value = 0.5
     this.rain = ctx.createGain()
     this.rain.gain.value = 0
-    src.connect(low).connect(high).connect(this.rain).connect(ctx.destination)
+    src.connect(low).connect(high).connect(this.rain).connect(this.bed!)
     src.start()
     // A second, softer layer of rain on its own loop, a little brighter.
     const patter = ctx.createBufferSource()
@@ -83,7 +87,7 @@ export class Sound {
     windLow.Q.value = 0.6
     this.wind = ctx.createGain()
     this.wind.gain.value = 0
-    windSrc.connect(windLow).connect(this.wind).connect(ctx.destination)
+    windSrc.connect(windLow).connect(this.wind).connect(this.bed!)
     windSrc.start()
 
     // Rain on the shed and house roofs: the same noise, duller and slower, drumming.
@@ -97,7 +101,7 @@ export class Sound {
     roofLow.Q.value = 0.5
     this.roof = ctx.createGain()
     this.roof.gain.value = 0
-    roofSrc.connect(roofLow).connect(this.roof).connect(ctx.destination)
+    roofSrc.connect(roofLow).connect(this.roof).connect(this.bed!)
     roofSrc.start()
 
     // Bees: a low buzz, faded in while they are working the flowers.
@@ -115,7 +119,7 @@ export class Sound {
     beeLow.Q.value = 0.5
     this.hum = ctx.createGain()
     this.hum.gain.value = 0
-    bee.connect(beeLow).connect(this.hum).connect(ctx.destination)
+    bee.connect(beeLow).connect(this.hum).connect(this.bed!)
     bee.start()
     wob.start()
   }
@@ -284,14 +288,29 @@ export class Sound {
     slow.connect(slowGain).connect(gate.gain)
     this.crickets = ctx.createGain()
     this.crickets.gain.value = 0
-    o.connect(chop).connect(gate).connect(this.crickets).connect(ctx.destination)
+    o.connect(chop).connect(gate).connect(this.crickets).connect(this.bed!)
     for (const n of [o, lfo, slow]) n.start()
   }
 
   /** Thunder: a crack, then a long low roll. Noise only, nothing pitched. */
+  /** Dip the beds of sound for a moment, so thunder or a bloom's chime stands out of the rain. */
+  private duck(depth: number, hold: number) {
+    const ctx = this.ctx
+    if (!ctx || !this.bed) return
+    const g = this.bed.gain
+    const now = ctx.currentTime
+    g.cancelScheduledValues(now)
+    g.setValueAtTime(g.value, now)
+    g.linearRampToValueAtTime(1 - depth, now + 0.08)
+    g.setValueAtTime(1 - depth, now + hold)
+    g.linearRampToValueAtTime(1, now + hold + T.audio.duck.release)
+  }
+
   thunder() {
     const ctx = this.ctx
     if (!ctx) return
+    const D = T.audio.duck
+    this.duck(D.thunder, D.thunderHold)
     const now = ctx.currentTime
     const len = 3.5
     const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * len), ctx.sampleRate)
@@ -429,6 +448,7 @@ export class Sound {
   bloom() {
     const ctx = this.ctx
     if (!ctx) return
+    this.duck(T.audio.duck.bloom, T.audio.duck.bloomHold)
     const now = ctx.currentTime
     // A rising fifth, like a small bell.
     ;[660, 990].forEach((f, i) => {

@@ -203,7 +203,7 @@ export class CloudView {
     // Plants the shower can reach: a drop that falls on one lands on its leaves, not the soil.
     const leafy = garden.plants.filter((p) => Math.hypot(p.x - c.x, p.z - c.z) < radius + 0.5 && p.growth > 0.15)
     this.spawnDebt += rate * dt
-    const len = 0.7
+    const R0 = T.render.streak
     const top = this.y - 0.2
     const sp = this.splash.geometry.attributes.position as THREE.BufferAttribute
     this.drops.forEach((d, i) => {
@@ -243,7 +243,8 @@ export class CloudView {
             break
           }
         }
-        d.y = top - Math.random() * 1.2
+        // Born anywhere down the fall, so the shower has no hard line under the cloud.
+        d.y = top - Math.random() * (top - d.floor) * 0.8
         d.live = true
       }
       const y = d.live ? d.y : -10
@@ -254,6 +255,7 @@ export class CloudView {
       arr[i * 6 + 1] = y
       arr[i * 6 + 2] = d.z
       arr[i * 6 + 3] = d.x - sx
+      const len = (storming ? R0.storm : R0.shower) * (0.6 + 0.8 * ((i * 0.618) % 1))
       arr[i * 6 + 4] = y + len
       arr[i * 6 + 5] = d.z - sz
     })

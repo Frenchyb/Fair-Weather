@@ -506,7 +506,7 @@ export const T = {
       snow: { saturation: 0.43, contrast: 0.14, high: [0.97, 0.98, 1.0], low: [0.02, 0.04, 0.08], vignette: 0.28 },
       dusk: { saturation: 0.56, contrast: 0.22, high: [1.0, 0.88, 0.72], low: [0.05, 0.02, 0.07], vignette: 0.36 },
       night: { saturation: 0.38, contrast: 0.18, high: [0.85, 0.9, 1.0], low: [0.0, 0.015, 0.05], vignette: 0.5 },
-      storm: { saturation: 0.24, contrast: 0.3, high: [0.8, 0.88, 1.0], low: [0.0, 0.015, 0.05], vignette: 0.55 },
+      storm: { saturation: 0.24, contrast: 0.3, high: [0.8, 0.88, 1.0], low: [0.03, 0.045, 0.08], vignette: 0.55 },
     },
   },
 
@@ -521,6 +521,8 @@ export const T = {
     shadeDarkness: 0.55,
     rainDrops: 6000,
     rainSpeed: 16,
+    /** Rain streak lengths in metres (each drop varies round these): short in a shower, a little longer in a storm. */
+    streak: { shower: 0.32, storm: 0.38 },
     /** Drops a second from the player's shower, and from a storm at full strength. */
     showerRain: 900,
     stormRain: 4000,
@@ -545,8 +547,13 @@ export const T = {
     precip: { rain: 2500, rainRate: 2200, snow: 3500, snowRate: 900, cloudSnowRate: 500, leaves: 220, leafRate: 14, reach: 22, height: 18 },
     /** Drifting clouds overhead, and how many puffs each. */
     skyPuffs: 9,
+    /** Mown stripes across the lawn: width in metres, and how much lighter and darker each stripe is. */
+    mowStripe: 1.6,
+    mowContrast: 0.07,
     /** A bee's body radius, metres: big enough to spot, small enough not to rival the tomatoes. */
-    beeSize: 0.028,
+    beeSize: 0.022,
+    /** Mulch ring round a plant outside the bed, as a share of its reach: just past the grass's clearing. */
+    mulch: 0.65,
     /** How strongly the patch under each bed plant shows that plant's own moisture. */
     soilPatch: 0.6,
     /** Rose's and Walter's heads, drawn a little larger than life so their faces read. */
@@ -566,6 +573,8 @@ export const T = {
     loops: { rain: 5.3, patter: 4.1, wind: 7.1, roof: 6.2 },
     /** Every small sound varies by up to this much in pitch and volume, so repeats never sound copied. */
     vary: { pitch: 0.08, gain: 0.15 },
+    /** How far the rain, wind and creatures dip (share of their volume) under thunder and a bloom's chime, for how long, and the seconds to come back. */
+    duck: { thunder: 0.55, thunderHold: 1.2, bloom: 0.35, bloomHold: 0.5, release: 1.5 },
     rainGain: 0.22,
     windGain: 0.35,
     rainFade: 0.6,

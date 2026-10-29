@@ -323,12 +323,18 @@ export function shaded<M extends THREE.Material>(material: M, fx: GroundFx = 'pl
           '#include <color_fragment>',
           `#include <color_fragment>
           vec3 parched = vec3(0.24, 0.25, 0.09);
-          vec3 lush = vec3(0.085, 0.245, 0.045);
+          // Lush grass varies: patches of deep blue-green and of fresher yellow-green, and faint mown stripes.
+          float tone = fwNoise(vShadeXZ * 0.45 + 31.0);
+          vec3 lush = mix(vec3(0.06, 0.235, 0.04), vec3(0.12, 0.27, 0.035), tone);
+          float stripe = sin(dot(vShadeXZ, vec2(0.92, 0.39)) * ${(Math.PI / T.render.mowStripe).toFixed(3)});
+          lush *= 1.0 + ${T.render.mowContrast.toFixed(3)} * sign(stripe) * smoothstep(0.0, 0.25, abs(stripe));
           lush = mix(lush, vec3(0.22, 0.22, 0.06), uSeason.z * 0.5);
           lush = mix(lush, vec3(0.16, 0.16, 0.08), uSeason.w * 0.7);
           lush *= 1.0 + uSeason.x * 0.1;
           vec3 blade = mix(parched, lush, smoothstep(0.0, 1.0, vGreen));
           blade *= mix(0.62, 1.18, vTip) * vVar;
+          // Sunlit tips warm towards gold.
+          blade += vec3(0.035, 0.025, -0.005) * vTip * vTip * (uSeason.x + uSeason.y);
           // A gust turns the blades and shows their paler sides.
           blade *= 1.0 + 0.45 * vGust * vTip * (0.3 + uAir);
           // Laid-over grass catches the light along its length, like a mown stripe.

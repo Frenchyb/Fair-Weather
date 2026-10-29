@@ -82,6 +82,15 @@ for (const name of pick ? pick.split(',') : Object.keys(MARKS)) {
     }
   }, m)
   await later(m.act === 'storm' ? 6 : 4)
+  // People walk off while the frame settles: put them back in the middle before the shot.
+  if (m.act === 'people') {
+    await page.evaluate(() => {
+      const { garden, view } = window.fairWeather
+      const p = garden.people.all.find((p) => !p.inside) ?? garden.people.walter
+      view.focus.set(p.x, p.z - 0.6)
+    })
+    await later(1)
+  }
   const file = join(out, `${name}-${w}x${h}.png`)
   await page.screenshot({ path: file, timeout: 600000 })
   // The frame's cost goes under every shot: a change that costs more is kept only on purpose.

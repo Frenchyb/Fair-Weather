@@ -107,7 +107,8 @@ function figure(rose: boolean, scene: THREE.Scene): Figure {
   } else {
     // Trousers to the waist, and a work coat that hangs just past the hips.
     hips.add(part(block, std(lower), 0, -0.04, 0, 0.3, 0.16, 0.2))
-    hips.add(turned([[0.0, -0.14], [0.19, -0.14], [0.18, 0.08], [0.17, 0.3], [0.2, 0.48], [0.19, 0.57], [0.11, 0.63], [0.05, 0.65], [0.0, 0.65]], top, 0.62))
+    // Fuller at the chest and hem, in at the waist, so the coat has a figure inside it.
+    hips.add(turned([[0.0, -0.14], [0.2, -0.14], [0.185, 0.04], [0.168, 0.2], [0.19, 0.36], [0.212, 0.48], [0.2, 0.56], [0.12, 0.63], [0.05, 0.65], [0.0, 0.65]], top, 0.66))
     // Collar, pockets and a row of buttons, so the coat reads as a coat.
     hips.add(part(block, std(0x5c6844), 0, 0.6, 0.02, 0.24, 0.06, 0.16))
     for (const x of [-0.1, 0.1]) hips.add(part(block, std(0x5c6844), x, 0.02, 0.12, 0.1, 0.08, 0.015))
@@ -585,6 +586,16 @@ export class PeopleView {
           f.armR.rotation.x = -2.5
           f.armR.rotation.z = 0.5
           break
+        case 'stand': {
+          // Never quite still: weight shifts from foot to foot, a breath, a look round.
+          const shift = Math.sin(ph * 0.6)
+          f.hips.rotation.z = shift * 0.035
+          f.hips.position.y = 0.85 + Math.sin(ph * 1.6) * 0.004
+          f.head.rotation.y = Math.sin(ph * 0.35) * 0.45
+          f.head.rotation.x = 0.05 + Math.sin(ph * 0.9) * 0.04
+          f.armL.rotation.x = f.armR.rotation.x = -0.12
+          break
+        }
         case 'porch':
           f.head.rotation.x = -0.3 + Math.sin(ph * 0.3) * 0.15
           f.armL.rotation.x = f.armR.rotation.x = -0.3
@@ -628,7 +639,7 @@ export class PeopleView {
       knee.rotation.x = 0.06 + Math.max(0, -a) + Math.max(0, a) * 0.9
     }
     for (const [arm, elbow, hand] of [[f.armL, f.elbowL, f.handL], [f.armR, f.elbowR, f.handR]] as const) {
-      elbow.rotation.x = -0.18 - Math.min(0.55, Math.max(0, -arm.rotation.x) * 0.3)
+      elbow.rotation.x = -0.35 - Math.min(0.5, Math.max(0, -arm.rotation.x) * 0.3)
       hand.rotation.x = -elbow.rotation.x
     }
 

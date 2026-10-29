@@ -183,7 +183,7 @@ export class GardenScene {
       if (!p.inBed) {
         // A ring of mulch round each plant outside the bed: its colour shows the soil's moisture.
         const mat = soilMaterial(MULCH_DRY)
-        const r = (T.kinds[p.kind].reach ?? 0.5) * 0.85
+        const r = (T.kinds[p.kind].reach ?? 0.5) * T.render.mulch
         mat.alphaMap = mulchEdge()
         mat.transparent = true
         mat.depthWrite = false
