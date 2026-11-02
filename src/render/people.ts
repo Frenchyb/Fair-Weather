@@ -1,0 +1,754 @@
+/**
+ * Rose and Walter, the washing line, and the things they leave about: the
+ * snowman, the vase of cut flowers in the front window, the crate of produce
+ * by the door, the basket waiting on a grey morning. The people are simple
+ * figures built to the approved turnaround sheet; what matters at this distance is the pose (bent over the bed,
+ * arms up at the line, sitting with tea, running for the door) and what they
+ * carry. Reads the garden only.
+ */
+import * as THREE from 'three'
+import { shaded } from './shade'
+import { weld } from './batch'
+import type { Garden } from '../sim/garden'
+import { washSpot, type Carry, type Emote, type Person } from '../sim/people'
+import { T } from '../tuning'
+import { ball, block, cone, leg, part, std } from './critters'
+
+// The shared cone points along +z (a beak) and the shared leg hangs down from
+// its origin; props here want them upright and centred.
+const rod = new THREE.CylinderGeometry(1, 1, 1, 8)
+const peak = new THREE.ConeGeometry(1, 1, 12)
+import type { Tracks } from './tracks'
+
+const BLOOM: Record<string, number> = {
+  lavender: 0x9b7fd0,
+  sunflower: 0xf2c230,
+  moonflower: 0xf4f1e6,
+  tomato: 0xd8432f,
+  lettuce: 0x8cc152,
+  apple: 0xc8372d,
+  fern: 0x4f8a3c,
+}
+
+const HOUSE = { x: -12, front: -6.27 }
+
+interface Figure {
+  root: THREE.Group
+  hips: THREE.Group
+  head: THREE.Group
+  legL: THREE.Group
+  legR: THREE.Group
+  armL: THREE.Group
+  armR: THREE.Group
+  kneeL: THREE.Group
+  kneeR: THREE.Group
+  elbowL: THREE.Group
+  elbowR: THREE.Group
+  handL: THREE.Group
+  handR: THREE.Group
+  props: Partial<Record<Exclude<Carry, null> | 'umbrellaUp' | 'produce', THREE.Object3D>>
+  produce: THREE.MeshStandardMaterial
+  bubble: THREE.Sprite
+  light: THREE.PointLight | null
+  tool: THREE.Object3D
+  /** How far the arms hang out from the body at rest: Rose's sit over her middle. */
+  spread: number
+  phase: number
+}
+
+/**
+ * A jointed limb: an upper part hanging from the group's origin, and a lower
+ * part on its own joint (knee or elbow) so it can bend. Both taper, and a
+ * rounded joint hides the seam.
+ */
+function limb(upper: number, lower: number, length: number, width: number, x: number, y: number) {
+  const g = new THREE.Group()
+  g.position.set(x, y, 0)
+  const half = length * 0.52
+  g.add(part(leg, std(upper), 0, 0, 0, width, half, width * 0.92))
+  const joint = new THREE.Group()
+  joint.position.y = -half
+  joint.add(part(ball, std(lower), 0, 0, 0, width * 0.82, width * 0.82, width * 0.82))
+  joint.add(part(leg, std(lower), 0, 0, 0, width * 0.8, length - half, width * 0.75))
+  const end = new THREE.Group()
+  end.position.y = -(length - half)
+  joint.add(end)
+  g.add(joint)
+  return { g, joint, end }
+}
+
+/** A body of revolution from (radius, height) pairs, flattened front to back. */
+function turned(points: [number, number][], color: number, depth: number) {
+  const m = part(new THREE.LatheGeometry(points.map(([r, y]) => new THREE.Vector2(r, y)), 18), std(color), 0, 0, 0, 1, 1, depth)
+  m.castShadow = true
+  return m
+}
+
+export function figure(rose: boolean, scene: THREE.Scene): Figure {
+  // Built to the approved turnaround sheet: Rose short and round in a raspberry
+  // cardigan, green apron and floral wellies; Walter tall and thin in a check
+  // shirt, tweed waistcoat, corduroys and boots. Same joints for both, so every
+  // pose works on either; the whole figure is then scaled to their heights.
+  const root = new THREE.Group()
+  const skin = 0xeec2a8
+  const flesh = std(skin)
+  const top = rose ? 0xa4475a : 0xe4dcc0 // cardigan / shirt
+  const lower = rose ? 0x5a4434 : 0x6a6234 // leggings / corduroy
+  const boot = rose ? 0x6f8a52 : 0x6b4a30
+  const W = rose ? 0.085 : 0.062
+  const L = limb(lower, rose ? boot : lower, 0.82, W, rose ? -0.1 : -0.085, 0.85)
+  const R = limb(lower, rose ? boot : lower, 0.82, W, rose ? 0.1 : 0.085, 0.85)
+  for (const l of [L, R]) {
+    if (rose) {
+      // Wellies to just under the knee, with a rolled brown top and roses on the shaft.
+      l.joint.add(part(rod, std(0x4a382a), 0, -0.07, 0, W * 1.05, 0.04, W * 1.05))
+      for (let i = 0; i < 4; i++) l.joint.add(part(ball, std(0xd88a90), Math.sin(i * 2.1) * W * 0.85, -0.14 - i * 0.07, Math.cos(i * 2.1) * W * 0.85, 0.014, 0.014, 0.008))
+      l.end.add(part(block, std(boot), 0, -0.025, 0.04, 0.12, 0.08, 0.22))
+      l.end.add(part(ball, std(boot), 0, -0.035, 0.13, 0.06, 0.045, 0.06))
+      l.end.add(part(block, std(0x3a3226), 0, -0.065, 0.045, 0.125, 0.02, 0.23))
+    } else {
+      // Turned-up cuffs, a band of wool sock, and big scuffed work boots.
+      l.joint.add(part(rod, std(0x7a7240), 0, -(0.82 - 0.82 * 0.52) + 0.1, 0, W * 1.08, 0.05, W * 1.08))
+      l.end.add(part(rod, std(0xd9ccae), 0, 0.045, 0, W * 0.9, 0.05, W * 0.9))
+      l.end.add(part(block, std(boot), 0, -0.02, 0.045, 0.115, 0.09, 0.25))
+      l.end.add(part(ball, std(boot), 0, -0.03, 0.15, 0.06, 0.05, 0.065))
+      l.end.add(part(block, std(0x3a2a1e), 0, -0.065, 0.05, 0.12, 0.025, 0.27))
+    }
+  }
+  root.add(L.g, R.g)
+  const hips = new THREE.Group()
+  hips.position.y = 0.85
+  root.add(hips)
+  if (rose) {
+    const apron = 0x7c9358
+    const pocket = 0x6c8249
+    // A sage skirt to mid-calf under the apron, then a full, round cardigan body.
+    hips.add(turned([[0.0, -0.5], [0.28, -0.5], [0.27, -0.3], [0.24, -0.06], [0.2, 0.06], [0.0, 0.07]], apron, 0.86))
+    hips.add(turned([[0.0, -0.06], [0.28, -0.06], [0.305, 0.08], [0.3, 0.2], [0.26, 0.33], [0.19, 0.44], [0.12, 0.52], [0.0, 0.56]], top, 0.82))
+    // Apron front, bib and pockets with tools and gloves poking out.
+    hips.add(part(block, std(apron), 0, -0.22, 0.225, 0.42, 0.5, 0.02))
+    hips.add(part(block, std(apron), 0, 0.24, 0.215, 0.24, 0.3, 0.02))
+    for (const x of [-0.11, 0.11]) hips.add(part(block, std(pocket), x, -0.12, 0.24, 0.15, 0.13, 0.015))
+    hips.add(part(rod, std(0x8a5a34), -0.14, -0.02, 0.245, 0.012, 0.12, 0.012))
+    hips.add(part(rod, std(0xb8bcc0), -0.09, -0.03, 0.245, 0.01, 0.1, 0.01))
+    hips.add(part(block, std(0xe6d6b8), 0.12, -0.04, 0.25, 0.07, 0.11, 0.02))
+    // The apron strings, tied in a bow at the back.
+    hips.add(part(block, std(apron), 0, 0.08, 0, 0.6, 0.025, 0.5))
+    for (const x of [-0.05, 0.05]) hips.add(part(ball, std(apron), x, 0.08, -0.25, 0.045, 0.03, 0.015))
+    hips.add(part(block, std(apron), -0.02, -0.02, -0.255, 0.015, 0.14, 0.01))
+    hips.add(part(block, std(apron), 0.02, -0.02, -0.255, 0.015, 0.14, 0.01))
+    // The floral blouse at the collar, and a row of cardigan buttons.
+    hips.add(part(ball, std(0xefe2c8), 0, 0.6, 0.06, 0.1, 0.045, 0.07))
+    for (let i = 0; i < 3; i++) hips.add(part(ball, std(0xd88a90), -0.04 + i * 0.04, 0.6, 0.125, 0.01, 0.01, 0.006))
+  } else {
+    // Corduroy to the waist, a check shirt, and a tweed waistcoat over it with a
+    // V front, pointed hem, buttons and a back buckle.
+    const tweed = 0x5a4330
+    hips.add(part(block, std(lower), 0, -0.04, 0, 0.25, 0.16, 0.17))
+    hips.add(turned([[0.0, -0.1], [0.14, -0.1], [0.14, 0.12], [0.158, 0.4], [0.165, 0.52], [0.1, 0.62], [0.04, 0.66], [0.0, 0.66]], top, 0.66))
+    hips.add(turned([[0.0, -0.12], [0.152, -0.12], [0.15, 0.1], [0.17, 0.38], [0.176, 0.5], [0.15, 0.55], [0.0, 0.55]], tweed, 0.68))
+    const vee = std(top)
+    for (const x of [-1, 1]) {
+      const v = part(block, vee, x * 0.03, 0.46, 0.112, 0.03, 0.2, 0.01)
+      v.rotation.z = x * 0.22
+      hips.add(v)
+      const tip = part(block, std(tweed), x * 0.07, -0.13, 0.095, 0.08, 0.06, 0.02)
+      tip.rotation.z = x * 0.5
+      hips.add(tip)
+    }
+    hips.add(part(ball, std(0x4a5a34), 0, 0.6, 0.04, 0.055, 0.03, 0.05))
+    for (let i = 0; i < 4; i++) hips.add(part(ball, std(0x2a2018), 0, 0.02 + i * 0.075, 0.118, 0.01, 0.01, 0.006))
+    hips.add(part(block, std(0x3a2c20), 0, 0.06, -0.115, 0.14, 0.03, 0.01))
+    hips.add(part(block, std(0xb8a060, 0.4), 0, 0.06, -0.12, 0.03, 0.035, 0.01))
+  }
+  const head = new THREE.Group()
+  head.position.set(0, rose ? 0.56 : 0.66, rose ? 0 : 0.045) // Walter stoops a little
+  hips.add(head)
+  if (rose) {
+    // A round, soft face with full rosy cheeks.
+    head.add(part(ball, flesh, 0, 0.11, 0.005, 0.11, 0.115, 0.108))
+    for (const x of [-0.1, 0.1]) head.add(part(ball, flesh, x, 0.1, 0, 0.016, 0.026, 0.012))
+    head.add(part(ball, flesh, 0, 0.09, 0.11, 0.022, 0.022, 0.022))
+    for (const x of [-0.055, 0.055]) head.add(part(ball, std(0xe58c84), x, 0.075, 0.085, 0.032, 0.024, 0.014))
+  } else {
+    // Long and narrow, with a domed bald top, big ears and a big nose.
+    head.add(part(ball, flesh, 0, 0.13, 0.005, 0.092, 0.135, 0.1))
+    head.add(part(ball, flesh, 0, 0.035, 0.05, 0.055, 0.045, 0.05))
+    for (const x of [-0.098, 0.098]) head.add(part(ball, flesh, x, 0.11, -0.005, 0.03, 0.048, 0.016))
+    head.add(part(ball, std(0xe3a08c), 0, 0.092, 0.12, 0.032, 0.04, 0.045))
+  }
+  // Eyes and brows, and a closed-mouth smile.
+  const brow = rose ? 0xd8d4cc : 0xc8c4bc
+  for (const x of [-0.04, 0.04]) {
+    head.add(part(ball, std(0x2a221c), x, 0.13, 0.098, 0.013, 0.016, 0.008))
+    const b = part(block, std(brow), x, 0.16, 0.096, 0.034, 0.009, 0.012)
+    b.rotation.z = x < 0 ? -0.18 : 0.18
+    head.add(b)
+  }
+  head.add(part(ball, std(0xa0584a), 0, rose ? 0.055 : 0.052, 0.1, 0.03, 0.007, 0.008))
+  if (rose) {
+    // White curls: a big soft cloud, wider than the head, over the crown, ears and back.
+    const hair = std(0xece6dc)
+    for (let i = 0; i < 26; i++) {
+      const a = (i / 26) * Math.PI * 2 * 1.618
+      const up = 0.07 + (((i * 7) % 13) / 13) * 0.17
+      const r = 0.135 - (up - 0.07) * 0.3
+      const z = Math.cos(a) * r
+      if (z > 0.05 && up < 0.17) continue // keep the face clear
+      head.add(part(ball, hair, Math.sin(a) * r * 1.1, up, z - 0.015, 0.06, 0.055, 0.058))
+    }
+    head.add(part(ball, hair, 0, 0.23, -0.01, 0.13, 0.075, 0.125))
+    for (const x of [-0.06, 0, 0.06]) head.add(part(ball, hair, x, 0.205, 0.075, 0.05, 0.042, 0.042))
+  } else {
+    // Grey at the sides and back, and round wire glasses.
+    const hair = std(0xc8c4bc)
+    for (const x of [-1, 1]) head.add(part(ball, hair, x * 0.085, 0.14, -0.035, 0.03, 0.05, 0.06))
+    head.add(part(ball, hair, 0, 0.13, -0.085, 0.07, 0.055, 0.03))
+    const wire = std(0x2a2622, 0.3)
+    for (const x of [-0.042, 0.042]) {
+      const lens = new THREE.Mesh(new THREE.TorusGeometry(0.024, 0.004, 6, 16), wire)
+      lens.position.set(x, 0.13, 0.104)
+      head.add(lens)
+      head.add(part(block, wire, x * 1.9, 0.135, 0.06, 0.004, 0.004, 0.09))
+    }
+    head.add(part(block, wire, 0, 0.135, 0.106, 0.03, 0.004, 0.004))
+  }
+  head.add(part(leg, flesh, 0, 0.03, 0, rose ? 0.05 : 0.04, 0.07, rose ? 0.05 : 0.04))
+  // Rose's head is big for her body, like the sheet's.
+  head.scale.setScalar(T.render.headSize * (rose ? T.render.roseHead : 1))
+  // Shoulders: round and soft for Rose, narrow and bony for Walter.
+  hips.add(part(ball, std(top), 0, rose ? 0.47 : 0.555, 0, rose ? 0.17 : 0.135, rose ? 0.09 : 0.05, rose ? 0.15 : 0.09))
+  // Arms: Rose's plump knitted sleeves end in a blouse cuff; Walter's shirt
+  // sleeves are rolled above the elbow over bare forearms.
+  const aw = rose ? 0.068 : 0.05
+  const ax = rose ? 0.19 : 0.165
+  const ay = rose ? 0.46 : 0.54
+  const AL = limb(top, rose ? top : skin, rose ? 0.5 : 0.62, aw, -ax, ay)
+  const AR = limb(top, rose ? top : skin, rose ? 0.5 : 0.62, aw, ax, ay)
+  for (const a of [AL, AR]) {
+    const inside = a === AL ? 1 : -1
+    if (rose) a.end.add(part(ball, std(0xefe2c8), 0, 0.0, 0.0, 0.055, 0.03, 0.055))
+    else a.joint.add(part(rod, std(top), 0, 0.01, 0, aw * 1.25, 0.05, aw * 1.25))
+    a.end.add(part(ball, flesh, 0, -0.055, 0.004, 0.036, 0.062, 0.02))
+    a.end.add(part(ball, flesh, inside * 0.028, -0.04, 0.016, 0.012, 0.026, 0.012))
+  }
+  hips.add(AL.g, AR.g)
+  // Their own tools, in the left hand: Rose's galvanised can, Walter's trowel.
+  const tool = new THREE.Group()
+  const zinc = std(0xa9aeb0, 0.35)
+  if (rose) {
+    tool.add(part(rod, zinc, 0, -0.2, 0.02, 0.1, 0.2, 0.08))
+    const spout = part(rod, zinc, 0, -0.17, 0.17, 0.014, 0.26, 0.014)
+    spout.rotation.x = 0.9
+    tool.add(spout)
+    const rose_ = part(peak, zinc, 0, -0.08, 0.27, 0.03, 0.05, 0.03)
+    rose_.rotation.x = -0.7
+    tool.add(rose_)
+    const grip = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.008, 6, 12, Math.PI), zinc)
+    grip.position.set(0, -0.1, 0.02)
+    grip.rotation.y = Math.PI / 2
+    tool.add(grip)
+  } else {
+    tool.add(part(rod, std(0x8a5a34), 0, -0.03, 0.03, 0.014, 0.12, 0.014))
+    const blade = part(peak, std(0x9aa0a4, 0.35), 0, 0.1, 0.03, 0.04, 0.16, 0.008)
+    tool.add(blade)
+    tool.rotation.x = -0.3
+  }
+  tool.position.y = -0.05
+  AL.end.add(tool)
+  const legL = L.g
+  const legR = R.g
+  const armL = AL.g
+  const armR = AR.g
+
+  // Things to carry, held in the right hand (or both, for the basket).
+  const hand = (o: THREE.Object3D) => {
+    o.position.y = -0.04
+    o.visible = false
+    AR.end.add(o)
+    return o
+  }
+  const wicker = std(0xb08850)
+  const basket = new THREE.Group()
+  basket.add(part(block, wicker, 0, -0.1, 0.12, 0.42, 0.2, 0.3))
+  basket.add(part(block, std(0xf6f2ea), 0, 0.01, 0.12, 0.38, 0.05, 0.26))
+  const harvest = new THREE.Group()
+  harvest.add(part(block, wicker, 0, -0.08, 0.06, 0.3, 0.14, 0.22))
+  const produce = std(0xd8432f, 0.5)
+  for (let i = 0; i < 4; i++) harvest.add(part(ball, produce, -0.08 + i * 0.055, 0.0, 0.06 + (i % 2) * 0.05, 0.045, 0.045, 0.045))
+  const umbrella = new THREE.Group()
+  umbrella.add(part(rod, std(0x333333), 0, 0.5, 0, 0.012, 1.1, 0.012))
+  const canopy = part(peak, std(rose ? 0xb6403a : 0x2c3e66, 0.6), 0, 1.15, 0, 0.62, 0.28, 0.62)
+  canopy.castShadow = true
+  umbrella.add(canopy)
+  const lantern = new THREE.Group()
+  lantern.add(part(block, std(0x2a2a2a), 0, -0.05, 0, 0.12, 0.02, 0.12))
+  const flame = new THREE.MeshStandardMaterial({ color: 0xffe0a0, emissive: 0xffb050, emissiveIntensity: 3 })
+  lantern.add(part(block, flame, 0, -0.13, 0, 0.1, 0.14, 0.1))
+  const shovel = new THREE.Group()
+  shovel.add(part(rod, std(0x7a5a3a), 0, 0, 0.3, 0.02, 1.1, 0.02))
+  shovel.children[0].rotation.x = 1.1
+  shovel.add(part(block, std(0x8a9096, 0.4), 0, -0.25, 0.8, 0.25, 0.02, 0.3))
+  const cup = part(rod, std(0xf4f1e6, 0.3), 0, -0.02, 0.04, 0.04, 0.07, 0.04)
+  const flowers = new THREE.Group()
+  for (let i = 0; i < 5; i++) {
+    flowers.add(part(rod, std(0x4f8a3c), (i - 2) * 0.02, 0.15, 0.04, 0.006, 0.35, 0.006))
+    flowers.add(part(ball, std([0x9b7fd0, 0xf2c230, 0xf4f1e6][i % 3]), (i - 2) * 0.03, 0.33, 0.04, 0.035, 0.035, 0.035))
+  }
+  const carrots = new THREE.Group()
+  for (let i = 0; i < 3; i++) {
+    const c = part(peak, std(0xe07020), (i - 1) * 0.03, -0.05, 0.05, 0.025, 0.16, 0.025)
+    c.rotation.x = Math.PI
+    carrots.add(c)
+  }
+  const seed = part(rod, std(0x9a8a6a), 0, -0.05, 0.05, 0.06, 0.12, 0.06)
+  const props: Figure['props'] = {
+    basket: hand(basket),
+    harvest: hand(harvest),
+    umbrellaUp: hand(umbrella),
+    lantern: hand(lantern),
+    shovel: hand(shovel),
+    cup: hand(cup),
+    flowers: hand(flowers),
+    carrots: hand(carrots),
+    seed: hand(seed),
+  }
+  const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }))
+  bubble.scale.setScalar(0.7)
+  bubble.position.y = 2.45
+  bubble.visible = false
+  root.add(bubble)
+  let light: THREE.PointLight | null = null
+  if (rose) {
+    // Always present (switching lights on and off would recompile every shader); dark unless lit.
+    light = new THREE.PointLight(0xffb060, 0, 7, 1.6)
+    light.position.set(0.25, 0.4, 0.2)
+    root.add(light)
+  }
+  root.visible = false
+  scene.add(root)
+  const joints = { kneeL: L.joint, kneeR: R.joint, elbowL: AL.joint, elbowR: AR.joint, handL: AL.end, handR: AR.end }
+  root.scale.setScalar(rose ? T.render.roseScale : T.render.walterScale)
+  return { root, hips, head, legL, legR, armL, armR, ...joints, props, produce, bubble, light, tool, spread: rose ? T.render.roseArms : 0.08, phase: rose ? 0 : 1.7 }
+}
+
+/** A thought bubble: a small picture, never words. */
+function emoteTexture(e: Emote) {
+  const c = document.createElement('canvas')
+  c.width = c.height = 128
+  const g = c.getContext('2d')!
+  g.fillStyle = 'rgba(255, 252, 240, 0.94)'
+  g.strokeStyle = 'rgba(60, 70, 50, 0.3)'
+  g.lineWidth = 4
+  g.beginPath()
+  g.arc(64, 58, 50, 0, Math.PI * 2)
+  g.fill()
+  g.stroke()
+  g.beginPath()
+  g.arc(36, 114, 8, 0, Math.PI * 2)
+  g.fill()
+  g.stroke()
+  g.lineCap = 'round'
+  g.lineWidth = 7
+  switch (e) {
+    case 'happy':
+      g.fillStyle = '#e8b830'
+      g.beginPath()
+      g.arc(64, 58, 30, 0, Math.PI * 2)
+      g.fill()
+      g.strokeStyle = '#6a4a20'
+      g.beginPath()
+      g.arc(64, 60, 17, 0.2, Math.PI - 0.2)
+      g.stroke()
+      g.fillStyle = '#6a4a20'
+      g.fillRect(50, 44, 7, 9)
+      g.fillRect(71, 44, 7, 9)
+      break
+    case 'tea':
+      g.fillStyle = '#f4f1e6'
+      g.strokeStyle = '#7a6a5a'
+      g.fillRect(40, 48, 40, 32)
+      g.strokeRect(40, 48, 40, 32)
+      g.beginPath()
+      g.arc(84, 63, 10, -Math.PI / 2, Math.PI / 2)
+      g.stroke()
+      g.strokeStyle = '#a0a0a0'
+      g.lineWidth = 4
+      for (const x of [50, 62, 74]) {
+        g.beginPath()
+        g.moveTo(x, 40)
+        g.quadraticCurveTo(x + 6, 32, x, 24)
+        g.stroke()
+      }
+      break
+    case 'surprised':
+      g.fillStyle = '#c0392b'
+      g.fillRect(57, 22, 14, 44)
+      g.beginPath()
+      g.arc(64, 82, 8, 0, Math.PI * 2)
+      g.fill()
+      break
+    case 'cold':
+      g.strokeStyle = '#5a8ec8'
+      for (let i = 0; i < 3; i++) {
+        const a = (i * Math.PI) / 3
+        g.beginPath()
+        g.moveTo(64 - Math.cos(a) * 30, 58 - Math.sin(a) * 30)
+        g.lineTo(64 + Math.cos(a) * 30, 58 + Math.sin(a) * 30)
+        g.stroke()
+      }
+      break
+    case 'note':
+      g.fillStyle = '#3a4a6a'
+      g.strokeStyle = '#3a4a6a'
+      g.beginPath()
+      g.ellipse(52, 78, 12, 9, -0.4, 0, Math.PI * 2)
+      g.fill()
+      g.beginPath()
+      g.moveTo(62, 76)
+      g.lineTo(62, 30)
+      g.lineTo(84, 38)
+      g.stroke()
+      break
+  }
+  const tex = new THREE.CanvasTexture(c)
+  tex.colorSpace = THREE.SRGBColorSpace
+  return tex
+}
+
+export class PeopleView {
+  private rose: Figure
+  private walter: Figure
+  private cloth: { mesh: THREE.Mesh; mat: THREE.MeshStandardMaterial; dry: THREE.Color }[] = []
+  private snowman: THREE.Group
+  private stems: THREE.Mesh[] = []
+  private doorBasket: THREE.Group
+  private crate: THREE.Mesh[] = []
+  private emotes = new Map<Emote, THREE.Texture>()
+  private wet = new THREE.Color(0x000000)
+
+  constructor(
+    scene: THREE.Scene,
+    private tracks: Tracks,
+  ) {
+    this.rose = figure(true, scene)
+    this.walter = figure(false, scene)
+    // Weld each body part's pieces; the things they carry stay separate, to be shown and tinted.
+    for (const f of [this.rose, this.walter]) {
+      for (const j of [f.root, f.hips, f.head, f.legL, f.legR, f.armL, f.armR, f.kneeL, f.kneeR, f.elbowL, f.elbowR, f.handL]) weld(j, () => false, true)
+    }
+    for (const e of ['happy', 'tea', 'surprised', 'cold', 'note'] as Emote[]) this.emotes.set(e, emoteTexture(e))
+
+    // The washing line: two posts, a line, and what hangs on it.
+    const W = T.wash
+    const wood = std(0x8a6a4a)
+    for (const x of [W.x0, W.x1]) {
+      const post = part(rod, wood, x, (W.height + 0.1) / 2, W.z, 0.05, W.height + 0.1, 0.05)
+      post.castShadow = true
+      scene.add(post)
+      scene.add(part(block, wood, x, W.height, W.z, 0.04, 0.04, 0.4))
+    }
+    scene.add(part(block, std(0xe8e4dc), (W.x0 + W.x1) / 2, W.height - 0.01, W.z, W.x1 - W.x0, 0.012, 0.012))
+    const colours = [0xf4f1ea, 0x8fb4d8, 0xe8d0a0, 0xd88a8a, 0xf4f1ea, 0xa0c890]
+    for (let i = 0; i < W.items; i++) {
+      const s = washSpot(i)
+      const sheet = i % 2 === 0
+      const w = sheet ? 0.85 : 0.5
+      const hgt = sheet ? 0.85 : 0.55
+      const geo = new THREE.PlaneGeometry(w, hgt, 6, 6)
+      geo.translate(0, -hgt / 2, 0)
+      const dry = new THREE.Color(colours[i % colours.length])
+      const mat = shaded(new THREE.MeshStandardMaterial({ color: dry.clone(), roughness: 0.95, side: THREE.DoubleSide }), 'creature')
+      const mesh = new THREE.Mesh(geo, mat)
+      mesh.position.set(s.x, W.height, s.z)
+      mesh.castShadow = true
+      mesh.visible = false
+      scene.add(mesh)
+      this.cloth.push({ mesh, mat, dry })
+    }
+
+    // The snowman Walter builds.
+    const snow = std(0xf4f6fa, 0.9)
+    const sm = new THREE.Group()
+    sm.add(part(ball, snow, 0, 0.4, 0, 0.42, 0.4, 0.42))
+    sm.add(part(ball, snow, 0, 0.98, 0, 0.3, 0.28, 0.3))
+    sm.add(part(ball, snow, 0, 1.42, 0, 0.2, 0.19, 0.2))
+    sm.add(part(cone, std(0xe07020), 0, 1.43, 0.27, 0.035, 0.035, 0.18))
+    for (const x of [-0.07, 0.07]) sm.add(part(ball, std(0x111111), x, 1.5, 0.17, 0.025, 0.025, 0.025))
+    for (const x of [-1, 1]) {
+      const arm = part(rod, std(0x5c4330), x * 0.45, 1.05, 0, 0.012, 0.5, 0.012)
+      arm.rotation.z = x * 1.0
+      sm.add(arm)
+    }
+    sm.add(part(block, std(0xb6403a), 0, 1.22, 0, 0.42, 0.06, 0.42))
+    for (const m of sm.children) m.castShadow = true
+    sm.visible = false
+    scene.add(sm)
+    this.snowman = sm
+
+    // The vase in the front window, filled one stem at a time.
+    const sill = HOUSE.front + 0.13
+    const vx = HOUSE.x - 1.4
+    scene.add(part(rod, new THREE.MeshStandardMaterial({ color: 0x9fc4c8, roughness: 0.1, transparent: true, opacity: 0.85 }), vx, 1.37, sill, 0.07, 0.2, 0.07))
+    for (let i = 0; i < T.people.vase; i++) {
+      const a = (i / T.people.vase) * Math.PI - Math.PI / 2
+      const stem = new THREE.Group()
+      stem.add(part(rod, std(0x4f8a3c), 0, 0.15, 0, 0.008, 0.3, 0.008))
+      const head = part(ball, std(0xffffff), 0, 0.31, 0, 0.05, 0.045, 0.05)
+      stem.add(head)
+      stem.position.set(vx, 1.42, sill)
+      stem.rotation.z = Math.sin(a) * 0.45
+      stem.rotation.x = 0.15
+      stem.visible = false
+      scene.add(stem)
+      this.stems.push(head)
+    }
+
+    // The washing basket left by the door on a grey morning.
+    const basket = new THREE.Group()
+    basket.add(part(block, std(0xb08850), 0, 0.12, 0, 0.5, 0.24, 0.36))
+    basket.add(part(block, std(0xf6f2ea), 0, 0.25, 0, 0.44, 0.05, 0.3))
+    basket.position.set(T.people.door.x + 0.9, 0, T.people.door.z + 0.3)
+    basket.visible = false
+    scene.add(basket)
+    this.doorBasket = basket
+
+    // A crate by the door that fills with what Walter brings in.
+    const crate = part(block, std(0x9a7a50), T.people.door.x - 1.0, 0.15, T.people.door.z + 0.35, 0.6, 0.3, 0.4)
+    crate.castShadow = true
+    scene.add(crate)
+    for (let i = 0; i < 12; i++) {
+      const m = part(ball, std(0xd8432f, 0.5), crate.position.x - 0.22 + (i % 4) * 0.15, 0.32 + Math.floor(i / 8) * 0.06, crate.position.z - 0.1 + (Math.floor(i / 4) % 2) * 0.18, 0.07, 0.07, 0.07)
+      m.visible = false
+      scene.add(m)
+      this.crate.push(m)
+    }
+  }
+
+  /** How strongly the front windows should glow: someone is in watching the weather. */
+  watching(garden: Garden) {
+    return garden.people.all.some((p) => p.atWindow) ? 1 : 0
+  }
+
+  update(garden: Garden, dt: number) {
+    const pp = garden.people
+    const t = garden.time
+    this.pose(this.rose, pp.rose, garden, t, dt)
+    this.pose(this.walter, pp.walter, garden, t, dt)
+
+    // The washing.
+    pp.wash.items.forEach((it, i) => {
+      const c = this.cloth[i]
+      c.mesh.visible = it.out
+      if (!it.out) return
+      const s = washSpot(i)
+      const breeze = garden.breezeAt(s.x, s.z) + (garden.storming ? 1 : 0.15)
+      // Wet washing hangs heavy; dry washing in a breeze flaps.
+      const lift = Math.min(1, breeze) * (1 - it.wet * 0.7)
+      c.mesh.rotation.x = -lift * 0.9 - Math.sin(t * (3 + i) + i) * (0.05 + lift * 0.25)
+      c.mesh.rotation.y = Math.sin(t * 1.3 + i * 2) * 0.1 * lift
+      c.mat.color.copy(c.dry).lerp(this.wet, it.wet * 0.35)
+      c.mat.roughness = 0.95 - it.wet * 0.5
+    })
+    this.doorBasket.visible = pp.wash.basketAtDoor
+
+    // The snowman.
+    const sz = pp.snowman.size
+    this.snowman.visible = sz > 0.02
+    this.snowman.position.set(pp.snowman.x, 0, pp.snowman.z)
+    this.snowman.scale.setScalar(0.25 + 0.75 * Math.min(1, sz))
+    const parts = this.snowman.children
+    // Built from the bottom up: base, then body, then the head and the trimmings.
+    parts[1].visible = sz > 0.4
+    for (let i = 2; i < parts.length; i++) parts[i].visible = sz > 0.75
+
+    // The vase.
+    const vase = pp.vase.slice(-T.people.vase)
+    this.stems.forEach((head, i) => {
+      const k = vase[i]
+      head.parent!.visible = !!k
+      if (k) (head.material as THREE.MeshStandardMaterial).color.setHex(BLOOM[k] ?? 0xffffff)
+    })
+
+    // The crate.
+    const total = Object.values(pp.pantry).reduce((a, b) => a + b, 0)
+    const kinds = Object.keys(pp.pantry).filter((k) => pp.pantry[k] > 0)
+    this.crate.forEach((m, i) => {
+      m.visible = i < total
+      if (m.visible && kinds.length) (m.material as THREE.MeshStandardMaterial).color.setHex(BLOOM[kinds[i % kinds.length]])
+    })
+  }
+
+  private pose(f: Figure, p: Person, garden: Garden, t: number, dt: number) {
+    f.root.visible = !p.inside
+    if (p.inside) {
+      if (f.light) f.light.intensity = 0
+      return
+    }
+    f.root.position.set(p.x, 0, p.z)
+    // Turn smoothly rather than snapping.
+    // At tea they turn to face each other across the table.
+    const S = T.people.seats
+    let heading = p.doing === 'tea' && !p.moving ? (p.x < (S[0].x + S[1].x) / 2 ? Math.PI / 2 : -Math.PI / 2) : p.heading
+    // At the line they face it.
+    if ((p.doing === 'peg' || p.doing === 'unpeg') && !p.moving) heading = p.z > T.wash.z ? Math.PI : 0
+    let d = heading - f.root.rotation.y
+    d = Math.atan2(Math.sin(d), Math.cos(d))
+    f.root.rotation.y += d * Math.min(1, dt * 8)
+
+    // Reset to standing.
+    f.hips.position.y = 0.85
+    f.hips.rotation.set(0, 0, 0)
+    f.head.rotation.set(0, 0, 0)
+    f.legL.rotation.set(0, 0, 0)
+    f.legR.rotation.set(0, 0, 0)
+    f.armL.rotation.set(0, 0, f.spread)
+    f.armR.rotation.set(0, 0, -f.spread)
+    f.legL.position.y = f.legR.position.y = 0.85
+
+    const ph = t + f.phase
+    if (p.moving) {
+      const run = p.moving === 'run'
+      const rate = run ? 11 : 6.5
+      const swing = Math.sin(ph * rate) * (run ? 0.75 : 0.4)
+      f.legL.rotation.x = swing
+      f.legR.rotation.x = -swing
+      f.armL.rotation.x = -swing * 0.8
+      f.armR.rotation.x = swing * 0.8
+      f.hips.position.y = 0.85 + Math.abs(Math.cos(ph * rate)) * (run ? 0.05 : 0.02)
+      if (run) f.hips.rotation.x = 0.18
+      if (p.doing === 'shovel' || p.carry === 'shovel') {
+        f.hips.rotation.x = 0.4
+        f.armL.rotation.x = f.armR.rotation.x = -0.8 + Math.sin(ph * 4) * 0.25
+      }
+      this.tracks.walk(garden, p, p.x, p.z, 0.05, 0.4)
+    } else {
+      switch (p.doing) {
+        case 'tea': {
+          // Sitting, cup up to the lips now and then.
+          f.hips.position.y = 0.48
+          f.legL.position.y = f.legR.position.y = 0.48
+          f.legL.rotation.x = f.legR.rotation.x = -1.45
+          const sip = Math.sin(ph * 0.5) > 0.6
+          f.armR.rotation.x = sip ? -2.3 : -0.9
+          f.armL.rotation.x = -0.5
+          break
+        }
+        case 'pick':
+        case 'cut':
+        case 'tend':
+        case 'carrots': {
+          f.hips.rotation.x = 0.75
+          f.head.rotation.x = 0.2
+          const reach = Math.sin(ph * 3)
+          f.armR.rotation.x = -0.9 + reach * 0.35
+          f.armL.rotation.x = -0.7 - reach * 0.2
+          break
+        }
+        case 'peg':
+        case 'unpeg':
+          f.armL.rotation.x = f.armR.rotation.x = -2.7 + Math.sin(ph * 4) * 0.12
+          f.head.rotation.x = -0.35
+          break
+        case 'feeder':
+          f.armR.rotation.x = -2.2
+          f.armL.rotation.x = -2.0
+          f.head.rotation.x = -0.4
+          break
+        case 'snowman': {
+          f.hips.rotation.x = 0.85
+          const push = Math.sin(ph * 2.5)
+          f.armL.rotation.x = f.armR.rotation.x = -1.2 + push * 0.3
+          f.legL.rotation.x = -0.3 + push * 0.15
+          break
+        }
+        case 'shovel':
+          f.hips.rotation.x = 0.45
+          f.armL.rotation.x = f.armR.rotation.x = -0.8 + Math.sin(ph * 4) * 0.3
+          break
+        case 'rain-smile':
+          f.head.rotation.x = -0.7
+          f.armL.rotation.z = 0.7
+          f.armR.rotation.z = -0.7
+          break
+        case 'check-sky':
+          f.head.rotation.x = -0.55 + Math.sin(ph * 0.7) * 0.1
+          f.head.rotation.y = Math.sin(ph * 0.5) * 0.5
+          f.armR.rotation.x = -2.5
+          f.armR.rotation.z = 0.5
+          break
+        case 'stand': {
+          // Never quite still: weight shifts from foot to foot, a breath, a look round.
+          const shift = Math.sin(ph * 0.6)
+          f.hips.rotation.z = shift * 0.035
+          f.hips.position.y = 0.85 + Math.sin(ph * 1.6) * 0.004
+          f.head.rotation.y = Math.sin(ph * 0.35) * 0.45
+          f.head.rotation.x = 0.05 + Math.sin(ph * 0.9) * 0.04
+          f.armL.rotation.x = f.armR.rotation.x = -0.12
+          break
+        }
+        case 'porch':
+          f.head.rotation.x = -0.3 + Math.sin(ph * 0.3) * 0.15
+          f.armL.rotation.x = f.armR.rotation.x = -0.3
+          f.armL.rotation.z = 0.35
+          f.armR.rotation.z = -0.35
+          break
+      }
+    }
+
+    // What they carry. Two hands on the basket.
+    const carry = p.carry
+    const show = (k: keyof Figure['props'], on: boolean) => {
+      const o = f.props[k]
+      if (o) o.visible = on
+    }
+    const pegging = p.doing === 'peg' || p.doing === 'unpeg'
+    show('basket', carry === 'basket' && !(pegging && !p.moving))
+    show('harvest', carry === 'basket' && !!p.produce && p.doing !== 'peg' && p.doing !== 'unpeg')
+    if (carry === 'basket' && p.produce) show('basket', false)
+    show('lantern', carry === 'lantern')
+    show('shovel', carry === 'shovel' || (p.doing === 'shovel' && !carry))
+    show('cup', carry === 'cup')
+    show('flowers', carry === 'flowers')
+    show('carrots', carry === 'carrots')
+    show('seed', carry === 'seed')
+    show('umbrellaUp', p.umbrella)
+    f.tool.visible = !carry && !pegging && !['tea', 'snowman', 'shovel', 'feeder', 'porch'].includes(p.doing)
+    if (p.produce) f.produce.color.setHex(BLOOM[p.produce] ?? 0xd8432f)
+    if (carry === 'basket' && !p.moving && p.doing !== 'peg' && p.doing !== 'unpeg') f.armL.rotation.x = f.armR.rotation.x = -0.5
+    if (p.umbrella) {
+      // Held up over the head.
+      f.armR.rotation.x = -0.6
+      f.armR.rotation.z = 0.25
+    }
+    if (carry === 'lantern' && p.moving) f.armR.rotation.x = -0.6
+
+    // Knees and elbows follow the limbs: a thigh raised forward or swung back
+    // bends the knee (sitting puts the shin straight down), and arms always
+    // keep a little bend, more as they come up.
+    for (const [legG, knee] of [[f.legL, f.kneeL], [f.legR, f.kneeR]] as const) {
+      const a = legG.rotation.x
+      knee.rotation.x = 0.06 + Math.max(0, -a) + Math.max(0, a) * 0.9
+    }
+    for (const [arm, elbow, hand] of [[f.armL, f.elbowL, f.handL], [f.armR, f.elbowR, f.handR]] as const) {
+      elbow.rotation.x = -0.35 - Math.min(0.5, Math.max(0, -arm.rotation.x) * 0.3)
+      hand.rotation.x = -elbow.rotation.x
+    }
+
+    if (f.light) {
+      const want = carry === 'lantern' ? 2.2 + Math.sin(t * 13) * 0.15 : 0
+      f.light.intensity += (want - f.light.intensity) * Math.min(1, dt * 4)
+    }
+
+    f.bubble.visible = !!p.emote
+    if (p.emote) {
+      const m = f.bubble.material as THREE.SpriteMaterial
+      const tex = this.emotes.get(p.emote)!
+      if (m.map !== tex) {
+        m.map = tex
+        m.needsUpdate = true
+      }
+      f.bubble.position.y = 2.35 + Math.sin(t * 2) * 0.04
+    }
+  }
+}

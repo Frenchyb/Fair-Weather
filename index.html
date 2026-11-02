@@ -2,12 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Fair Weather</title>
     <style>
       :root {
-        --ink: #2f3a2c;
-        --paper: rgba(255, 252, 240, 0.82);
+        --ink: #26301f;
+        --paper: rgba(250, 248, 240, 0.5);
+        --edge: rgba(255, 255, 255, 0.35);
+        --moss: #56704a;
+        /* Keep the HUD clear of a phone's notch and home bar in landscape. */
+        --sl: env(safe-area-inset-left, 0px);
+        --sr: env(safe-area-inset-right, 0px);
+        --sb: env(safe-area-inset-bottom, 0px);
       }
       html,
       body {
@@ -15,7 +21,8 @@
         height: 100%;
         overflow: hidden;
         background: #bcdcf0;
-        font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;
+        font-family: 'Iowan Old Style', 'Palatino', 'Palatino Linotype', Georgia, serif;
+        -webkit-font-smoothing: antialiased;
         color: var(--ink);
         user-select: none;
         -webkit-user-select: none;
@@ -28,23 +35,29 @@
         top: 0;
         width: 100vw;
         height: 100vh;
+        height: 100dvh;
         display: block;
         touch-action: none;
       }
       .card {
         position: fixed;
         background: var(--paper);
-        border-radius: 10px;
-        padding: 8px 12px;
-        font-size: 15px;
-        line-height: 1.35;
-        box-shadow: 0 2px 10px rgba(40, 60, 30, 0.15);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+        border: 1px solid var(--edge);
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-size: 14.5px;
+        line-height: 1.4;
+        letter-spacing: 0.01em;
+        box-shadow: 0 2px 10px rgba(30, 45, 25, 0.08);
         pointer-events: none;
       }
       #hint {
-        left: 16px;
+        left: calc(16px + var(--sl));
         top: 16px;
-        max-width: 300px;
+        max-width: 270px;
+        font-size: 13.5px;
         transition: opacity 1.2s;
       }
       #hint b {
@@ -52,16 +65,144 @@
         font-style: italic;
       }
       #count {
-        right: 16px;
+        right: calc(16px + var(--sr));
         top: 16px;
+        font-size: 13px;
+        padding: 5px 12px;
+        display: flex;
+        gap: 14px;
+        align-items: center;
       }
+      /* A small labelled meter: the label, a bar, the number. */
+      .meter,
+      .gauge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .meter i,
+      .gauge i {
+        font-style: italic;
+        opacity: 0.7;
+      }
+      .meter b,
+      .gauge b {
+        display: inline-block;
+        width: 54px;
+        height: 5px;
+        border-radius: 3px;
+        background: rgba(38, 48, 31, 0.14);
+        overflow: hidden;
+      }
+      .meter em,
+      .gauge em {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: #5d8f3c;
+        border-radius: 3px;
+        transition: width 0.6s;
+      }
+      #water-bar {
+        background: #6f93b4;
+      }
+      #storm-bar {
+        background: #6b7c8f;
+      }
+      #journal {
+        right: calc(16px + var(--sr));
+        top: 54px;
+        width: 290px;
+        pointer-events: auto;
+        font-size: 14px;
+      }
+      #journal-head {
+        cursor: pointer;
+        font-style: italic;
+      }
+      #journal-head span {
+        opacity: 0.55;
+        font-size: 12px;
+      }
+      #journal ul {
+        list-style: none;
+        margin: 6px 0 0;
+        padding: 0;
+        display: grid;
+        gap: 4px;
+        max-height: 46vh;
+        overflow-y: auto;
+      }
+      #journal li {
+        padding-left: 20px;
+        position: relative;
+        opacity: 0.9;
+      }
+      #journal li::before {
+        content: '';
+        position: absolute;
+        left: 2px;
+        top: 4px;
+        width: 10px;
+        height: 10px;
+        border: 1.5px solid var(--ink);
+        border-radius: 50%;
+        opacity: 0.6;
+      }
+      #journal li.done {
+        opacity: 0.5;
+        text-decoration: line-through;
+      }
+      #journal li.done::before {
+        background: #5d8f3c;
+        border-color: #5d8f3c;
+        opacity: 1;
+      }
+      #journal.closed ul {
+        display: none;
+      }
+      /* Sits just over the plant it is about (placed from main.ts). */
       #tip {
         left: 50%;
-        bottom: 18px;
-        transform: translateX(-50%);
+        top: 50%;
+        transform: translate(-50%, -100%);
         opacity: 0;
         transition: opacity 0.25s;
         white-space: nowrap;
+        font-size: 13.5px;
+      }
+      #gauges {
+        left: calc(16px + var(--sl));
+        bottom: calc(18px + var(--sb));
+        font-size: 12.5px;
+        padding: 6px 12px;
+        display: grid;
+        gap: 3px;
+        transition: background 0.6s, color 0.6s;
+      }
+      .gauge i {
+        width: 40px;
+      }
+      #storm-note {
+        font-size: 11.5px;
+        opacity: 0.75;
+        font-style: italic;
+      }
+      #gauges.ready {
+        background: rgba(232, 238, 248, 0.9);
+      }
+      #gauges.on {
+        background: rgba(70, 80, 95, 0.85);
+        color: #eef2f6;
+      }
+      #toast {
+        left: 50%;
+        top: 16px;
+        transform: translateX(-50%);
+        max-width: min(440px, calc(100vw - 64px));
+        text-align: center;
+        opacity: 0;
+        transition: opacity 0.6s;
       }
       #done {
         left: 50%;
@@ -79,7 +220,81 @@
         margin-top: 4px;
         opacity: 0.75;
       }
-      @media (max-width: 600px) {
+      #sky {
+        right: calc(16px + var(--sr));
+        bottom: calc(18px + var(--sb));
+        pointer-events: auto;
+        display: grid;
+        gap: 5px;
+        font-size: 13px;
+        padding: 8px 10px;
+      }
+      /* Folded to today's weather and season until the pointer is over it. */
+      #sky:not(:hover):not(.open) {
+        grid-auto-flow: column;
+        gap: 10px;
+      }
+      #sky:not(:hover):not(.open) button:not(.now),
+      #sky:not(:hover):not(.open) kbd {
+        display: none;
+      }
+      #sky:not(:hover):not(.open) button.now {
+        background: transparent;
+        border-color: transparent;
+        color: inherit;
+        box-shadow: none;
+        padding: 0 2px;
+      }
+      #sky .row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+      }
+      #sky .label {
+        width: 54px;
+        font-style: italic;
+        opacity: 0.7;
+      }
+      #sky button {
+        font: inherit;
+        color: inherit;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        padding: 2px 9px;
+        cursor: pointer;
+        transition: background 0.3s, color 0.3s, border-color 0.3s;
+      }
+      #sky button:hover {
+        background: rgba(255, 255, 255, 0.45);
+      }
+      #sky button.now {
+        border-color: rgba(38, 48, 31, 0.35);
+      }
+      #sky button.on {
+        background: var(--moss);
+        border-color: var(--moss);
+        color: #f7f4e8;
+        box-shadow: 0 1px 4px rgba(40, 60, 30, 0.25);
+      }
+      #perf {
+        display: none;
+        left: calc(16px + var(--sl));
+        top: 50%;
+        transform: translateY(-50%);
+        font: 12px/1.5 ui-monospace, Menlo, monospace;
+      }
+      #perf .over {
+        color: #a2321e;
+      }
+      #sky kbd {
+        font: inherit;
+        font-size: 10px;
+        opacity: 0.55;
+        margin-left: 3px;
+      }
+      @media (max-width: 760px) {
         .card {
           font-size: 13px;
         }
@@ -88,8 +303,93 @@
         }
         #tip {
           white-space: normal;
-          width: calc(100vw - 64px);
+          max-width: calc(100vw - 64px);
           text-align: center;
+        }
+        #sky kbd {
+          display: none;
+        }
+      }
+      /* Phones held sideways: fold the HUD to slim pills so the garden shows. */
+      @media (max-height: 500px) {
+        .card {
+          font-size: 12px;
+          padding: 4px 10px;
+          border-radius: 5px;
+        }
+        #hint,
+        #count {
+          top: 10px;
+        }
+        #count {
+          right: calc(10px + var(--sr));
+        }
+        #journal {
+          top: 40px;
+          right: calc(10px + var(--sr));
+          width: auto;
+          max-width: 260px;
+        }
+        #journal:not(.closed) {
+          width: 240px;
+        }
+        #journal,
+        #count {
+          font-size: 12px;
+        }
+        #gauges {
+          left: calc(10px + var(--sl));
+          bottom: calc(10px + var(--sb));
+          padding: 4px 10px;
+        }
+        #storm-note {
+          display: none;
+        }
+        #sky {
+          right: calc(10px + var(--sr));
+          bottom: calc(10px + var(--sb));
+          padding: 4px 6px;
+          font-size: 13px;
+        }
+        #sky:not(.open) {
+          grid-auto-flow: column;
+        }
+        #sky kbd {
+          display: none;
+        }
+        #sky:not(.open) .label,
+        #sky:not(.open) button:not(.now) {
+          display: none;
+        }
+        #sky:not(.open)::after {
+          content: '\25BE';
+          align-self: center;
+          opacity: 0.55;
+          padding-right: 4px;
+        }
+        #sky:not(.open) button.now {
+          background: transparent;
+          border-color: transparent;
+          color: inherit;
+          box-shadow: none;
+          min-height: 32px;
+        }
+        #sky.open button {
+          min-height: 34px;
+          padding: 2px 11px;
+        }
+      }
+      #portrait {
+        display: none;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        font-style: italic;
+      }
+      @media (orientation: portrait) and (pointer: coarse) {
+        #portrait {
+          display: block;
         }
       }
     </style>
@@ -97,12 +397,33 @@
   <body>
     <canvas id="view"></canvas>
     <div id="hint" class="card">
-      You are the weather over this garden.<br />
-      <b>Move</b> to steer the cloud. <b>Hold the mouse button</b> (or space) to rain.
-      Rest the cloud over the pond to fill it up.
+      You are the weather over this garden. <b>Move</b> to steer the cloud and
+      <b>hold the mouse</b> (or Space) to rain. Rest it over the pond to refill.
+      <b>X</b>/<b>Z</b> spread or gather it; <b>WASD</b>, <b>Q</b>/<b>E</b> and
+      <b>scroll</b> move the view.
     </div>
-    <div id="count" class="card"></div>
+    <div id="count" class="card">
+      <span id="when"></span>
+      <span class="meter" title="Share of the lawn that is properly green"><i>Lawn</i><b><em id="lawn-bar"></em></b><span id="lawn-pc"></span></span>
+      <span class="meter" title="Plants in full bloom"><i>Blooms</i><span id="blooms"></span></span>
+    </div>
+    <div id="perf" class="card"></div>
+    <div id="journal" class="card">
+      <div id="journal-head">Journal <span>(J)</span></div>
+      <ul id="wishes"></ul>
+    </div>
     <div id="tip" class="card"></div>
+    <div id="toast" class="card"></div>
+    <div id="gauges" class="card">
+      <div class="gauge" title="How much rain the cloud holds; rest it over the pond to refill"><i>Cloud</i><b><em id="water-bar"></em></b><span id="water-pc"></span></div>
+      <div class="gauge" id="storm" title="The storm charges as the lawn greens and plants bloom"><i>Storm</i><b><em id="storm-bar"></em></b><span id="storm-pc"></span></div>
+      <div id="storm-note"></div>
+    </div>
+    <div id="sky" class="card">
+      <div class="row" id="weather-row"><span class="label">Weather</span></div>
+      <div class="row" id="season-row"><span class="label">Season</span></div>
+    </div>
+    <div id="portrait" class="card">Turn your phone sideways to see the whole garden.</div>
     <div id="done" class="card">
       Full bloom. The bees have found your garden.
       <small>Stay as long as you like.</small>
