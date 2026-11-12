@@ -442,7 +442,8 @@ export class Garden {
     })
     const h = this.habitat
     if (this.visitors.geese) this.wish('geese')
-    if (h.rabbits.mode === 'graze' && this.daylight > 0.3) this.wish('rabbits')
+    // The entry reads "green the lawn and the rabbits come out", so it waits for a greener lawn than the one you start on.
+    if (h.rabbits.mode === 'graze' && this.daylight > 0.3 && this.greenShare >= T.hud.rabbitsAtGreen) this.wish('rabbits')
     if (h.frogs.mode === 'croak') this.wish('frogs')
     if (h.deer.mode === 'graze') this.wish('deer')
     if (h.rabbits.kits > 0) this.wish('kits')

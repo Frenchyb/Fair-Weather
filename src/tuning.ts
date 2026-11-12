@@ -516,7 +516,7 @@ export const T = {
 
   /** The instructions card fades after this many seconds on screen, or seconds of rain. */
   // How long a line stays up (s), and the least time between Rose's and Walter's lines.
-  hud: { hintFor: 15, hintAfterRain: 3, sayFor: 4.5, chatEvery: 45, chatFirst: 6 },
+  hud: { hintFor: 15, hintAfterRain: 3, sayFor: 4.5, chatEvery: 45, chatFirst: 6, rabbitsAtGreen: 0.4 },
 
   /** The performance budget the overlay (P) checks against: what a phone held sideways should manage. */
   perf: {

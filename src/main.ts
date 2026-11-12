@@ -93,7 +93,7 @@ const garden = new Garden({
   onWish: (id) => {
     const li = items.get(id)
     li?.classList.add('done')
-    if (li) say(li.textContent ?? '', 'Journal')
+    if (li) say(`Done: ${li.textContent ?? ''}`, 'Journal')
     if (journal.classList.contains('closed')) pill.classList.add('new')
     sound.bloom()
   },
