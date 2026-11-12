@@ -147,8 +147,14 @@
       }
       #journal-head .close {
         margin-left: auto;
-        opacity: 0.55;
-        font-size: 13px;
+        font: inherit;
+        font-size: 14px;
+        color: inherit;
+        background: #efe4c8;
+        border: 2px solid var(--edge);
+        border-radius: 999px;
+        padding: 3px 14px;
+        cursor: pointer;
       }
       #journal .page {
         padding: 14px 22px 0;
@@ -188,6 +194,10 @@
         gap: 4px;
         max-height: 52vh;
         overflow-y: auto;
+        /* The list scrolls; a fade at the foot says there is more below. */
+        padding-bottom: 28px;
+        -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent);
+        mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent);
       }
       #journal li {
         padding-left: 20px;
@@ -482,13 +492,13 @@
       <div id="journal-head">
         <button class="tab on" data-page="wishes-page">Things to try</button>
         <button class="tab" data-page="help-page">How to play</button>
-        <span class="close">J or Esc to close</span>
+        <button class="close">Close (J)</button>
       </div>
       <div class="page" id="wishes-page"><ul id="wishes"></ul></div>
       <div class="page off" id="help-page">
         <p>You are the weather over this garden. Move the mouse to steer your cloud, and hold the button (or Space) to rain where it points.</p>
         <p>Rest the cloud over the pond to fill it again. X and Z spread it out or gather it in.</p>
-        <p>F brings fog, L lightning when the cloud is full and gathered, and G lets a storm go once it has charged.</p>
+        <p>Hold Shift beside something in bloom for a breeze that carries its seed. F brings fog. L (or a double-click) calls lightning when the cloud is full and gathered, and G lets a storm go once it has charged.</p>
         <p>WASD or the screen edges pan, Q and E turn, scroll zooms. The weather and season buttons at the bottom right set the day.</p>
       </div>
     </div>

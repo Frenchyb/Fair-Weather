@@ -267,7 +267,7 @@ const LINES: Partial<Record<Doing, Partial<Record<PersonId, string>>>> = {
   feeder: { rose: 'There you go, birds.' },
 }
 const was: Record<PersonId, Doing | null> = { rose: null, walter: null }
-let chatQuiet = T.hud.chatEvery * 0.5
+let chatQuiet = T.hud.chatFirst
 function chatter(dt: number) {
   chatQuiet -= dt
   for (const p of garden.people.all) {
