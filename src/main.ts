@@ -5,6 +5,7 @@ import { GardenScene } from './render/scene'
 import { HEIGHT as PLANT_TOP } from './render/plants'
 import { Garden, type StrikeRefusal } from './sim/garden'
 import { WISHES } from './sim/journal'
+import type { Doing, PersonId } from './sim/people'
 import { dayProgress } from './sim/sky'
 import { T } from './tuning'
 
@@ -27,11 +28,15 @@ const weatherRow = document.getElementById('weather-row')!
 const seasonRow = document.getElementById('season-row')!
 
 let toastTimer = 0
-function say(text: string) {
-  toast.textContent = text
+const toastWho = document.getElementById('toast-who')!
+const toastText = document.getElementById('toast-text')!
+/** One short line in the box along the bottom, with who is speaking on its tag. */
+function say(text: string, who = 'The garden') {
+  toastWho.textContent = who
+  toastText.textContent = text
   toast.style.opacity = '1'
   clearTimeout(toastTimer)
-  toastTimer = window.setTimeout(() => (toast.style.opacity = '0'), 4000)
+  toastTimer = window.setTimeout(() => (toast.style.opacity = '0'), T.hud.sayFor * 1000)
 }
 
 // The journal: things to try, ticked off as they happen.
@@ -42,13 +47,25 @@ for (const w of WISHES) {
   wishList.appendChild(li)
   items.set(w.id, li)
 }
+// The journal is one large panel with tabs, opened from its pill (or J) and
+// closed with J or Esc; a new entry ticked off lights the pill rather than
+// covering the garden.
+const pill = document.getElementById('journal-pill')!
 function toggleJournal() {
   journal.classList.toggle('closed')
+  pill.classList.remove('new')
 }
-journalHead.addEventListener('click', toggleJournal)
-// It starts folded away; a new entry ticked off opens it for a moment.
+pill.addEventListener('click', toggleJournal)
+journalHead.querySelector('.close')!.addEventListener('click', toggleJournal)
+for (const tab of Array.from(journalHead.querySelectorAll<HTMLButtonElement>('.tab'))) {
+  tab.addEventListener('click', (e: MouseEvent) => {
+    e.stopPropagation()
+    for (const t of Array.from(journalHead.querySelectorAll('.tab'))) t.classList.toggle('on', t === tab)
+    for (const page of Array.from(journal.querySelectorAll('.page'))) page.classList.toggle('off', page.id !== tab.dataset.page)
+  })
+}
+addEventListener('keydown', (e) => e.code === 'Escape' && !journal.classList.contains('closed') && toggleJournal())
 journal.classList.add('closed')
-let journalTimer = 0
 
 const REFUSED: Record<StrikeRefusal, string> = {
   'too-little-water': 'Lightning needs a fuller cloud. Rest it over the pond first.',
@@ -76,25 +93,21 @@ const garden = new Garden({
   onWish: (id) => {
     const li = items.get(id)
     li?.classList.add('done')
-    if (li) say(`Journal: ${li.textContent}`)
-    if (journal.classList.contains('closed')) {
-      journal.classList.remove('closed')
-      clearTimeout(journalTimer)
-      journalTimer = window.setTimeout(() => journal.classList.add('closed'), 6000)
-    }
+    if (li) say(li.textContent ?? '', 'Journal')
+    if (journal.classList.contains('closed')) pill.classList.add('new')
     sound.bloom()
   },
   onStrike: () => sound.thunder(),
   onSound: (s) => sound.play(s),
   onStrikeRefused: (why) => REFUSED[why] && say(REFUSED[why]),
-  onRainbow: () => say('A rainbow. The butterflies are coming out.'),
-  onStormReady: () => say('A storm has gathered. Press G to let it go wherever your cloud is.'),
+  onRainbow: () => say('A rainbow. The butterflies are coming out.', 'The sky'),
+  onStormReady: () => say('A storm has gathered. Press G to let it go wherever your cloud is.', 'The sky'),
   onStorm: () => {
-    say('Here it comes. Steer it round the garden.')
+    say('Here it comes. Steer it round the garden.', 'The sky')
     sound.thunder()
   },
   onStormRefused: () => say('The storm is still gathering. Green more of the lawn, or bring something into bloom.'),
-  onStormEnd: () => say('The storm has passed, and the cloud is full again.'),
+  onStormEnd: () => say('The storm has passed, and the cloud is full again.', 'The sky'),
 })
 // Phones (and ?lite) draw at one pixel per CSS pixel, without ambient occlusion or bloom.
 const phone = matchMedia('(pointer: coarse)').matches
@@ -235,6 +248,41 @@ const SEASON_SAY: Record<Season, string> = {
   autumn: 'Autumn. The leaves are turning, and the geese are on the move.',
   winter: 'Winter. The garden rests: nothing grows, nothing needs you. Snow, if it comes, will settle.',
 }
+// Rose and Walter say a word as they start something, now and then: never
+// more than one line in T.hud.chatEvery seconds, so the garden stays quiet.
+const WHO: Record<PersonId, string> = { rose: 'Rose - gardener', walter: 'Walter - odd jobs' }
+const LINES: Partial<Record<Doing, Partial<Record<PersonId, string>>>> = {
+  'rain-smile': { rose: 'Ooh, lovely soft rain. The beds needed that.', walter: 'That will do the beans a world of good.' },
+  tea: { rose: 'Kettle is on. Sit with me a minute.', walter: 'Nothing like tea in the garden.' },
+  peg: { rose: 'Good drying weather. Out it all goes.' },
+  unpeg: { rose: 'Rain coming! Quick, the washing!' },
+  porch: { rose: 'Look at that sky.', walter: 'Best seat for a storm, this.' },
+  pick: { rose: 'Look what you have grown for us.', walter: 'Coming on nicely, these.' },
+  cut: { rose: 'A few for the vase in the window.' },
+  carrots: { walter: 'Carrots for supper.' },
+  tend: { rose: 'There you are, my lovelies.', walter: 'Just tidying round.' },
+  'check-sky': { rose: 'Rain later, do you think?', walter: 'Clouding up a bit.' },
+  snowman: { rose: 'Every winter, a snowman. That is the rule.', walter: 'Bit more on his tummy.' },
+  shovel: { walter: 'Mind the path, it is slippery.' },
+  feeder: { rose: 'There you go, birds.' },
+}
+const was: Record<PersonId, Doing | null> = { rose: null, walter: null }
+let chatQuiet = T.hud.chatEvery * 0.5
+function chatter(dt: number) {
+  chatQuiet -= dt
+  for (const p of garden.people.all) {
+    const now = p.inside || p.moving ? null : p.doing
+    if (now && now !== was[p.id] && chatQuiet <= 0) {
+      const line = LINES[now]?.[p.id]
+      if (line) {
+        say(line, WHO[p.id])
+        chatQuiet = T.hud.chatEvery
+      }
+    }
+    was[p.id] = now
+  }
+}
+
 let shownWeather = garden.climate.weather
 let shownSeason = garden.climate.season
 
@@ -317,11 +365,12 @@ function frame(now: number) {
   if (out && (c.breezing || garden.storming) && Math.random() < dt * 0.6) sound.play('snap')
   if (cl.season !== shownSeason) {
     shownSeason = cl.season
-    say(SEASON_SAY[cl.season])
+    say(SEASON_SAY[cl.season], 'The year')
   } else if (cl.weather !== shownWeather) {
-    say(WEATHER_SAY[cl.weather])
+    say(WEATHER_SAY[cl.weather], 'The sky')
   }
   shownWeather = cl.weather
+  chatter(dt)
   showSky()
 
   // Every number on screen has its label, and the storm says what to do next.

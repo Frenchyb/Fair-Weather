@@ -62,6 +62,9 @@ export class CloudView {
   private nextSplash = 0
   private veil: THREE.Mesh
   private veilMat: THREE.ShaderMaterial
+  private wet: THREE.Mesh[] = []
+  private wetMat: THREE.ShaderMaterial[] = []
+  private wetness = 0
   private mist: THREE.Points
   private mistDots: { t: number; ox: number; oz: number }[] = []
 
@@ -148,6 +151,43 @@ export class CloudView {
     this.veil.renderOrder = 2
     scene.add(this.veil)
 
+    // Darker, soaked ground where the shower lands: one disc on the lawn and
+    // one on the bed's soil, each cut to its own surface so neither floats.
+    for (const top of [false, true]) {
+      const m = new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        uniforms: {
+          uAlpha: { value: 0 },
+          uColor: { value: new THREE.Color(T.render.wet.colour) },
+          uBed: { value: new THREE.Vector2(T.bed.width / 2, T.bed.depth / 2) },
+          uTop: { value: top ? 1 : 0 },
+        },
+        vertexShader: `varying vec2 vUv; varying vec2 vW;
+          void main() { vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xz;
+            gl_Position = projectionMatrix * viewMatrix * w; }`,
+        // A ragged soft edge, wettest in the middle, and cut at the bed's rim.
+        fragmentShader: `uniform float uAlpha; uniform vec3 uColor; uniform vec2 uBed; uniform float uTop;
+          varying vec2 vUv; varying vec2 vW;
+          void main() {
+            vec2 p = vUv * 2.0 - 1.0; float a = atan(p.y, p.x);
+            float r = length(p) / (0.86 + 0.06 * sin(a * 5.0) + 0.04 * sin(a * 11.0 + 1.0));
+            float inBed = step(abs(vW.x), uBed.x) * step(abs(vW.y), uBed.y);
+            if (abs(inBed - uTop) > 0.5) discard;
+            float k = uAlpha * (1.0 - smoothstep(0.45, 1.0, r));
+            gl_FragColor = vec4(uColor, k); }`,
+      })
+      const disc = new THREE.Mesh(new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2), m)
+      disc.position.y = top ? T.bed.height + 0.004 : 0.004
+      disc.visible = false
+      disc.renderOrder = 1
+      this.wet.push(disc)
+      this.wetMat.push(m)
+      scene.add(disc)
+    }
+
     const q = 160
     this.mist = new THREE.Points(
       new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(q * 3), 3)),
@@ -187,6 +227,7 @@ export class CloudView {
 
     this.updateRain(garden, dt)
     this.updateVeil(garden, dt)
+    this.updateWet(garden, dt)
     this.updateMist(garden, dt)
   }
 
@@ -288,6 +329,23 @@ export class CloudView {
     const h = this.y
     this.veil.scale.set(r, h, r)
     this.veil.position.set(c.x, h / 2, c.z)
+  }
+
+  private updateWet(garden: Garden, dt: number) {
+    const c = garden.cloud
+    const storming = this.storm > 0.3
+    const w = T.render.wet
+    const on = (c.raining && !garden.climate.dormant) || storming
+    this.wetness += on ? (1 - this.wetness) * (1 - Math.exp(-dt * w.soak)) : -this.wetness * (1 - Math.exp(-dt * w.dry))
+    const r = (storming ? T.storm.radius : garden.radius) * 1.15
+    for (let i = 0; i < 2; i++) {
+      const disc = this.wet[i]
+      disc.visible = this.wetness > 0.01
+      // Follows the shower while it falls; once it stops, the patch dries where it is.
+      if (on) disc.position.set(c.x, disc.position.y, c.z)
+      disc.scale.set(r, 1, r)
+      this.wetMat[i].uniforms.uAlpha.value = this.wetness * w.darkness
+    }
   }
 
   private updateMist(garden: Garden, dt: number) {

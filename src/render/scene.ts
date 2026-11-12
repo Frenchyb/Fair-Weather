@@ -113,8 +113,8 @@ export class GardenScene {
   private slow = 0
   private world = new World()
   private horizon = new Horizon()
-  private hemi = new THREE.HemisphereLight(0xdfeeff, 0x4d6a32, 0.9)
-  private sun = new THREE.DirectionalLight(0xfff0d8, 3.2)
+  private hemi = new THREE.HemisphereLight(T.look.skyFill, T.look.groundFill, 0.9)
+  private sun = new THREE.DirectionalLight(T.look.sunColour, 3.2)
   private moon = new THREE.DirectionalLight(0x8fa8ff, 0)
   private fogColor = new THREE.Color()
   private plants: PlantView[] = []
@@ -556,7 +556,7 @@ export class GardenScene {
     this.scene.environmentIntensity = (0.12 + T.look.sky * day) * (1 - gloom * 0.5) * soft + flash
     // Under cloud the sky does the lighting, so the fill rises as the sun fades.
     this.hemi.intensity = (0.25 + (T.look.fill - 0.25) * day) * (1 + Math.max(grey, fog) * 0.6) * (1 - gloom * 0.4) * soft + flash * 2
-    this.hemi.color.setHex(0xdfeeff).lerp(new THREE.Color(0x6f80b8), 1 - day)
+    this.hemi.color.setHex(T.look.skyFill).lerp(new THREE.Color(0x6f80b8), 1 - day)
     this.hemi.color.lerp(tmp.setHex(0xc4c8cc), Math.max(grey, fog) * 0.6)
 
     // The shadow box follows the view and grows when zoomed out.
@@ -571,7 +571,7 @@ export class GardenScene {
     this.sun.target.position.copy(f)
     // Under cloud the light comes from everywhere: the sun fades and shadows go soft.
     this.sun.intensity = T.look.sun * day * (1 - gloom * 0.7) * Math.max(0.12, 1 - grey * 0.85 - fog * 0.6)
-    this.sun.color.setHex(0xfff0d8).lerp(new THREE.Color(0xffa868), dusk * 0.6)
+    this.sun.color.setHex(T.look.sunColour).lerp(new THREE.Color(0xffa868), dusk * 0.6)
     this.moon.position.set(f.x - 10, 25, f.z + 12)
     this.moon.target.position.copy(f)
     this.moon.intensity = 0.6 * (1 - day)

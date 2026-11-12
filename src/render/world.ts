@@ -165,6 +165,7 @@ export class World {
     this.boundary()
     this.house()
     this.paths()
+    this.bedEdge()
     this.shed()
     this.oak()
     this.pond()
@@ -411,6 +412,71 @@ export class World {
       flowers.setColorAt(i, c.setHex(palette[Math.floor(r2() * palette.length)]))
     }
     flowers.castShadow = true
+    this.root.add(flowers)
+  }
+
+  /**
+   * Low mounds of catmint, lady's mantle and box round the foot of the raised
+   * bed, so it sits in a planted border instead of on bare lawn. Scenery only:
+   * nothing here needs the player's rain, and it stops short of where the
+   * stepping stones arrive.
+   */
+  private bedEdge() {
+    const E = T.render.bedEdge
+    const r = rng(11)
+    const hw = T.bed.width / 2 + E.offset
+    const hd = T.bed.depth / 2 + E.offset
+    const stones: [number, number][] = [
+      [-4.4, -0.6],
+      [4.3, -0.4],
+      [0, 2.2],
+    ]
+    const kinds = [
+      { leaf: 0x6f8a6a, bloom: 0x8f86d8, h: 0.55 }, // catmint
+      { leaf: 0x93ac42, bloom: 0xd9dc6a, h: 0.45 }, // lady's mantle
+      { leaf: 0x3f6b32, bloom: -1, h: 0.5 }, // box
+    ]
+    const shape = canopy([[0, 0, 0, 1]], { length: 1, width: 0.45, widest: 0.5, fold: 0.25, curl: 0.15 }, 0.15, T.render.canopy.sprays * 1.2, 0.86, 9, [3, 1])
+    const mats = kinds.map((k) => leaves(new THREE.Color(k.leaf), k.bloom < 0))
+    const spots: { x: number; z: number; k: number; s: number }[] = []
+    const side = (x0: number, z0: number, x1: number, z1: number) => {
+      const n = Math.max(1, Math.round(Math.hypot(x1 - x0, z1 - z0) / E.spacing))
+      for (let i = 0; i < n; i++) {
+        const t = (i + 0.5) / n
+        const x = x0 + (x1 - x0) * t + (r() - 0.5) * 0.12
+        const z = z0 + (z1 - z0) * t + (r() - 0.5) * 0.12
+        if (stones.some(([sx, sz]) => Math.hypot(sx - x, sz - z) < E.gap)) continue
+        spots.push({ x, z, k: Math.floor(r() * kinds.length), s: 0.75 + r() * 0.45 })
+      }
+    }
+    side(-hw, hd, hw, hd)
+    side(-hw, -hd, hw, -hd)
+    side(-hw, -hd, -hw, hd)
+    side(hw, -hd, hw, hd)
+    for (const p of spots) {
+      const k = kinds[p.k]
+      const m = new THREE.Mesh(shape, mats[p.k])
+      m.scale.set(E.size * p.s, E.size * p.s * k.h * 2, E.size * p.s)
+      m.position.set(p.x, E.size * 0.35 * p.s, p.z)
+      m.rotation.y = r() * Math.PI * 2
+      add(this.root, m, true, true)
+    }
+    // Little flower spikes over the flowering mounds.
+    const bloomy = spots.filter((p) => kinds[p.k].bloom >= 0)
+    const n = bloomy.length * E.blooms
+    const flowers = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.03, 0), lambert(0xffffff), n)
+    const mx = new THREE.Matrix4()
+    const c = new THREE.Color()
+    bloomy.forEach((p, j) => {
+      for (let i = 0; i < E.blooms; i++) {
+        const a = r() * Math.PI * 2
+        const d = Math.sqrt(r()) * E.size * 0.8 * p.s
+        mx.makeScale(1, 1.8, 1).setPosition(p.x + Math.cos(a) * d, E.size * (1.05 + r() * 0.35) * p.s * kinds[p.k].h * 2, p.z + Math.sin(a) * d)
+        flowers.setMatrixAt(j * E.blooms + i, mx)
+        flowers.setColorAt(j * E.blooms + i, c.setHex(kinds[p.k].bloom).offsetHSL(0, 0, (r() - 0.5) * 0.08))
+      }
+    })
+    flowers.castShadow = false
     this.root.add(flowers)
   }
 

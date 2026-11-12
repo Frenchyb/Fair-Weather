@@ -489,9 +489,13 @@ export const T = {
     stormDim: 0.2,
     /** Exposure added at the height of a lightning flash. */
     flashExposure: 1.2,
-    sun: 4.2,
+    sun: 4.4,
+    /** Warm sun over cool, sky-blue shadows (the 10-29 real-game re-score: shadows read neutral grey). */
+    sunColour: 0xffe4bc,
+    skyFill: 0xb8d2ff,
+    groundFill: 0x4d6a32,
     /** Sky fill from the hemisphere light and the sky's own reflections, at noon. */
-    fill: 0.38,
+    fill: 0.4,
     sky: 0.38,
     bloom: { strength: 0.22, radius: 0.55, threshold: 0.9 },
     /** Clear-day haze: where it starts and where it hides everything, metres from the camera. */
@@ -511,7 +515,8 @@ export const T = {
   },
 
   /** The instructions card fades after this many seconds on screen, or seconds of rain. */
-  hud: { hintFor: 15, hintAfterRain: 3 },
+  // How long a line stays up (s), and the least time between Rose's and Walter's lines.
+  hud: { hintFor: 15, hintAfterRain: 3, sayFor: 4.5, chatEvery: 45 },
 
   /** The performance budget the overlay (P) checks against: what a phone held sideways should manage. */
   perf: {
@@ -534,6 +539,8 @@ export const T = {
     stormRain: 4000,
     /** Where drops land: a few droplets thrown up, how big (metres), for how long (seconds). */
     splash: { pool: 2400, droplets: 3, size: 0.07, life: 0.28 },
+    /** Darker, wet ground where the shower lands: how dark at most, how fast it soaks (1/s) and dries (1/s). */
+    wet: { darkness: 0.2, soak: 0.6, dry: 0.07, colour: 0x2a2014 },
     /**
      * Meadow grass, after the island proof: tufts laid out on a grid round the
      * camera's focus in the vertex shader (cell in metres, tufts a side), fading
@@ -580,6 +587,8 @@ export const T = {
     windWisps: 60,
     /** Tree crowns: leaf sprays per square metre of crown surface, and how much of the crown's lump shows inside them. */
     canopy: { sprays: 5, core: 0.8 },
+    /** Low planting round the foot of the raised bed: mounds this far apart, this far out, with gaps where the paths arrive. */
+    bedEdge: { spacing: 0.42, offset: 0.24, size: 0.19, gap: 0.85, blooms: 12 },
   },
 
   audio: {
